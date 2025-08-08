@@ -5,7 +5,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const { uploadDir, extractedExcelFile } = require("../config/constants");
 const { analyzeInvoiceWithAzure } = require("../services/azureService");
-const { uploadToFtp } = require("../services/ftpService");
+const { uploadToFtp  } = require("../services/ftpService");
 const { saveToExcel } = require("../utils/excelHelper");
 
 const router = express.Router();
@@ -35,7 +35,7 @@ router.get("/process-one-invoice", async (req, res) => {
 
     const { fullUrl, fileName } = pdfLinks[0];
     const localPath = path.join(uploadDir, fileName);
-    console.log(`Downloading: ${fileName}`);
+    console.log(`📥 Downloading: ${fileName}`);
 
     const writer = fs.createWriteStream(localPath);
     const fileRes = await axios({ url: fullUrl, method: "GET", responseType: "stream" });
@@ -46,36 +46,44 @@ router.get("/process-one-invoice", async (req, res) => {
       writer.on("error", reject);
     });
 
-    console.log("Downloaded:", fileName);
+    console.log(" Downloaded:", fileName);
 
     const result = await analyzeInvoiceWithAzure(localPath);
     if (!result) throw new Error("Azure training failed");
+    //console.dir(result.full_json, { depth: null }); // 👈 add this
 
     result.file = fileName;
     saveToExcel([result]);
 
     await uploadToFtp(localPath, fileName);
+   // await deleteFromFtpAfterProcessing(fileName);
+
+
+    // ✅ Only delete here, after successful FTP upload
     fs.unlinkSync(localPath);
+    console.log(" File deleted from UploadInvoice folder after successful training & upload.");
 
     res.json({
       status: "done",
       message: "Processed and uploaded one invoice",
       extracted: result,
     });
+
   } catch (err) {
-    console.error("❌ Error:", err.message);
+    console.error(" Error:", err.message);
     res.status(500).json({ error: "Processing failed", details: err.message });
   }
 });
+
 
 router.get("/download-excel", (req, res) => {
   if (!fs.existsSync(extractedExcelFile)) {
     return res.status(404).json({ error: "Excel file not found." });
   }
 
-  res.download(extractedExcelFile, "Extracted_Invoices.xlsx", (err) => {
+  res.download(extractedExcelFile, "Invoices.xlsx", (err) => {
     if (err) {
-      console.error("❌ Excel download error:", err.message);
+      console.error(" Excel download error:", err.message);
       res.status(500).json({ error: "Download failed." });
     }
   });
