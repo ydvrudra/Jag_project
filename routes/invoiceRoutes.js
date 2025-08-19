@@ -60,8 +60,12 @@ router.get("/process-one-invoice", async (req, res) => {
 
 
     // ✅ Only delete here, after successful FTP upload
-    fs.unlinkSync(localPath);
-    console.log(" File deleted from UploadInvoice folder after successful training & upload.");
+    try {
+      fs.unlinkSync(localPath);
+      console.log("🗑️ File deleted from UploadInvoice after successful training & upload.");
+    } catch (err) {
+      console.error("⚠️ File delete failed:", err.message);
+    }
 
     res.json({
       status: "done",
