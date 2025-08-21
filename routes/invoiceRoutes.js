@@ -6,14 +6,16 @@ const cheerio = require("cheerio");
 const { uploadDir, extractedExcelFile } = require("../config/constants");
 const { analyzeInvoiceWithAzure } = require("../services/azureService");
 const { uploadToFtp  } = require("../services/ftpService");
-const { saveToExcel } = require("../utils/excelHelper");
+const { saveToExcel } = require("../services/excelhelper");
+
 
 const router = express.Router();
 
+const processedFiles = new Set(); // Track processed files to avoid duplicates
 router.get("/process-one-invoice", async (req, res) => {
   try {
-    const baseUrl = "http://sja.jagsoftware.in/UserData/UploadInvoice/";
-    const html = await axios.get(baseUrl);
+    const baseUrl = "http://sja.jagsoftware.in/UserData/UploadInvoice/";  
+    const html = await axios.get(baseUrl); 
     const $ = cheerio.load(html.data);
 
     const pdfLinks = [];
@@ -23,7 +25,8 @@ router.get("/process-one-invoice", async (req, res) => {
         const fullUrl = new URL(href, baseUrl).href;
         const fileName = fullUrl.split("/").pop();
         const localPath = path.join(uploadDir, fileName);
-        if (!fs.existsSync(localPath)) {
+      //  if (!fs.existsSync(localPath)) {
+       if (!processedFiles.has(fileName) && !fs.existsSync(localPath)) {
           pdfLinks.push({ fullUrl, fileName });
         }
       }
@@ -33,7 +36,8 @@ router.get("/process-one-invoice", async (req, res) => {
       return res.json({ message: "No new PDF files found to download." });
     }
 
-    const { fullUrl, fileName } = pdfLinks[0];
+    const { fullUrl, fileName } = pdfLinks[pdfLinks.length - 8]
+     processedFiles.add(fileName);
     const localPath = path.join(uploadDir, fileName);
     console.log(`📥 Downloading: ${fileName}`);
 

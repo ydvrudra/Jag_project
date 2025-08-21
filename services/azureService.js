@@ -5,10 +5,7 @@ const path = require("path");
 // Get modelId dynamically
 function getModelIdFromFile(filePath) {
   const name = path.basename(filePath).toLowerCase();
-  //if (name.includes("v2")) return "invoice-model-rudra-v2";
-  //if (name.includes("v3")) return "invoice-model-rudra-v3";
- // if (name.includes("v4")) return "invoice-model-rudra-v4";
-  return "new_invoice_model_id"; 
+  return "invoice_model_id"; 
 }
 
 // Retry wrapper
@@ -74,8 +71,6 @@ async function analyzeInvoiceWithAzure(filePath) {
     return null;
   }
 }
-
-
 
 module.exports = { analyzeInvoiceWithAzure };
 
