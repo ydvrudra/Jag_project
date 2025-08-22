@@ -1,90 +1,37 @@
-require("dotenv").config();
-const express = require("express");
-const multer = require("multer");
-const fs = require("fs");
-const axios = require("axios");
-const path = require("path");
-const cors = require("cors");
+import express from "express";
+import fs from "fs";
+import path from "path";
 
 const app = express();
-const port = 3000;
 
-// Allow frontend to access backend
-app.use(
-  cors({
-    origin: "http://localhost:5174",
-    methods: ["GET", "POST"],
-    credentials: true,
-  })
-);
-
-// Serve static files from uploads folder
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// Setup multer for file upload
-const upload = multer({ dest: "uploads/" });
-
-// POST route to upload invoice and analyze using Azure Form Recognizer
-app.post("/analyze-invoice", upload.single("file"), async (req, res) => {
+app.delete("/delete-invoices", async (req, res) => {
   try {
-    const filePath = path.resolve(req.file.path);
-    const fileData = fs.readFileSync(filePath);
-
-    console.log("📄 Uploaded file:", req.file.originalname);
-
-    // Send file to Azure Form Recognizer
-    const response = await axios.post(
-      `${process.env.AZURE_ENDPOINT}formrecognizer/documentModels/prebuilt-invoice:analyze?api-version=2023-07-31`,
-      fileData,
-      {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Ocp-Apim-Subscription-Key": process.env.AZURE_KEY,
-        },
-      }
+    // Invoice folder ka path
+    const folderPath = path.join(
+      __dirname,
+      "public_html/UserData/Invoices/Processed_Invoices/"
     );
 
-    const resultUrl = response.headers["operation-location"];
-    console.log("🔗 Operation-Location:", resultUrl);
-
-    // Poll Azure until we get a final status
-    const getResult = async () => {
-      while (true) {
-        const pollResponse = await axios.get(resultUrl, {
-          headers: {
-            "Ocp-Apim-Subscription-Key": process.env.AZURE_KEY,
-          },
-        });
-
-        const status = pollResponse.data.status;
-        console.log("⏳ Azure Status:", status);
-
-        if (status === "succeeded") return pollResponse.data;
-        if (status === "failed") throw new Error("Azure failed to analyze document");
-
-        // Wait before polling again
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Folder ke andar sari files padho
+    fs.readdir(folderPath, (err, files) => {
+      if (err) {
+        return res.status(500).json({ message: "Folder read error", error: err });
       }
-    };
 
-    const result = await getResult();
+      // Har file delete karo
+      files.forEach((file) => {
+        fs.unlink(path.join(folderPath, file), (err) => {
+          if (err) {
+            console.error("Error deleting file:", file, err);
+          }
+        });
+      });
 
-    // Return result to frontend
-    res.json({
-      fileUrl: `http://localhost:${port}/uploads/${req.file.filename}`,
-      data: result,
+      return res.status(200).json({ message: "All invoices deleted from folder" });
     });
-  } catch (err) {
-    console.error("❌ Error:", err.response?.data || err.message);
-    res.status(500).send("Failed to analyze invoice");
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
   }
 });
 
-// Start the server
-app.listen(port, () => {
-  console.log(`🚀 Server running on: http://localhost:${port}`);
-});
-
-
-
-
+app.listen(5000, () => console.log("Server running on port 5000"));

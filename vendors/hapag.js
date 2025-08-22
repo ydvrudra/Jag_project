@@ -3,7 +3,8 @@ const { parseAmount, parsePercent, getFirst } = require("../helpers/common");
 
 // Hapag-Lloyd me TAX code => C0/C2/G0/G2
 function taxFromCode(code) {
-  switch ((code || "").trim().toUpperCase()) {
+ // switch ((code || "").trim().toUpperCase()) {
+ switch ((code || "").toString().trim().toUpperCase()) {
     case "G0": return { igstPct: 5,  cgstPct: 0,  sgstPct: 0 };
     case "G2": return { igstPct: 18, cgstPct: 0,  sgstPct: 0 };
     case "C0": return { igstPct: 0,  cgstPct: 2.5, sgstPct: 2.5 };

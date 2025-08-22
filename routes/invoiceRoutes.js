@@ -5,16 +5,15 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const { uploadDir, extractedExcelFile } = require("../config/constants");
 const { analyzeInvoiceWithAzure } = require("../services/azureService");
-const { uploadToFtp  } = require("../services/ftpService");
+const { uploadToFtp ,deleteFromFtpAfterProcessing } = require("../services/ftpService");
 const { saveToExcel } = require("../services/excelhelper");
 
 
 const router = express.Router();
 
-const processedFiles = new Set(); // Track processed files to avoid duplicates
-router.get("/process-one-invoice", async (req, res) => {
+router.get("/process-all-invoices", async (req, res) => {
   try {
-    const baseUrl = "http://sja.jagsoftware.in/UserData/UploadInvoice/";  
+    const baseUrl = "http://www.study.jagsoftware.in/public_html/UserData/Invoices/UploadInvoice/";  
     const html = await axios.get(baseUrl); 
     const $ = cheerio.load(html.data);
 
@@ -25,60 +24,69 @@ router.get("/process-one-invoice", async (req, res) => {
         const fullUrl = new URL(href, baseUrl).href;
         const fileName = fullUrl.split("/").pop();
         const localPath = path.join(uploadDir, fileName);
-      //  if (!fs.existsSync(localPath)) {
-       if (!processedFiles.has(fileName) && !fs.existsSync(localPath)) {
-          pdfLinks.push({ fullUrl, fileName });
-        }
+        // Remove condition checking file existence here
+        // So that all pdfs get processed every time
+        pdfLinks.push({ fullUrl, fileName, localPath });
       }
     });
 
     if (pdfLinks.length === 0) {
-      return res.json({ message: "No new PDF files found to download." });
+      return res.json({ message: "No PDF files found to process." });
     }
 
-    const { fullUrl, fileName } = pdfLinks[pdfLinks.length - 8]
-     processedFiles.add(fileName);
-    const localPath = path.join(uploadDir, fileName);
-    console.log(`📥 Downloading: ${fileName}`);
+    const results = [];
+    const errors = [];
 
-    const writer = fs.createWriteStream(localPath);
-    const fileRes = await axios({ url: fullUrl, method: "GET", responseType: "stream" });
+    for (const { fullUrl, fileName, localPath } of pdfLinks) {
+      try {
+        console.log(`📥 Downloading: ${fileName}`);
 
-    await new Promise((resolve, reject) => {
-      fileRes.data.pipe(writer);
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-    });
+        // Download file fresh every time (overwrite existing)
+        const writer = fs.createWriteStream(localPath);
+        const fileRes = await axios({ url: fullUrl, method: "GET", responseType: "stream" });
 
-    console.log(" Downloaded:", fileName);
+        await new Promise((resolve, reject) => {
+          fileRes.data.pipe(writer);
+          writer.on("finish", resolve);
+          writer.on("error", reject);
+        });
 
-    const result = await analyzeInvoiceWithAzure(localPath);
-    if (!result) throw new Error("Azure training failed");
-    //console.dir(result.full_json, { depth: null }); // 👈 add this
+        console.log(" Downloaded:", fileName);
 
-    result.file = fileName;
-    saveToExcel([result]);
+        // Process the invoice via Azure
+        const result = await analyzeInvoiceWithAzure(localPath);
+        if (!result) throw new Error("Azure training failed");
 
-    await uploadToFtp(localPath, fileName);
-   // await deleteFromFtpAfterProcessing(fileName);
+        result.file = fileName;
+        saveToExcel([result]);
 
+        await uploadToFtp(localPath, fileName);
+        await deleteFromFtpAfterProcessing(fileName);
 
-    // ✅ Only delete here, after successful FTP upload
-    try {
-      fs.unlinkSync(localPath);
-      console.log("🗑️ File deleted from UploadInvoice after successful training & upload.");
-    } catch (err) {
-      console.error("⚠️ File delete failed:", err.message);
+        try {
+          fs.unlinkSync(localPath);
+          console.log("🗑️ File deleted after successful processing.");
+        } catch (err) {
+          console.error("⚠️ File delete failed:", err.message);
+        }
+
+        results.push({ fileName, status: "success" });
+
+      } catch (err) {
+        console.error(`❌ Failed processing ${fileName}:`, err.message);
+        errors.push({ fileName, error: err.message });
+      }
     }
 
     res.json({
       status: "done",
-      message: "Processed and uploaded one invoice",
-      extracted: result,
+      processed: results.length,
+      failed: errors.length,
+      details: { success: results, errors },
     });
 
   } catch (err) {
-    console.error(" Error:", err.message);
+    console.error("Error in processing invoices:", err.message);
     res.status(500).json({ error: "Processing failed", details: err.message });
   }
 });
