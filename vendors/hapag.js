@@ -19,7 +19,7 @@ function mapLineItem(line) {
 
   // Hapag me taxable amount left of INR/USD hota hai. Try multiple keys, then fallback RATE
   let taxable = parseAmount(getFirst(f, [
-    "TAXABLE AMOUNT", "TAXABLE_AMOUNT", "AMOUNT", "VALUE"
+    "TAXABLE_AMOUNT"
   ]));
   if (!taxable) taxable = parseAmount(getFirst(f, ["RATE"]));
 
@@ -33,16 +33,16 @@ function mapLineItem(line) {
   return {
     "SIZE":        getFirst(f, ["SIZE"]) || "",
     "TYPE":        getFirst(f, ["TYPE"]) || "",
-    "CHARGES DESCRIPTION": getFirst(f, ["CHARGE_DESCRIPTION","CHARGES DESCRIPTION"]) || "",
-    "HSN/SAC":     getFirst(f, ["HSN_SAC_CODE","HSN/SAC"]) || "",
+    "CHARGE_DESCRIPTION": getFirst(f, ["CHARGE_DESCRIPTION"]) || "",
+    "HSN_SAC_CODE":     getFirst(f, ["HSN_SAC_CODE","HSN/SAC"]) || "",
     "TAX":         taxCode,
     "BASED ON":    getFirst(f, ["BASED ON","BASED_ON"]) || "",
     "RATE":        getFirst(f, ["RATE"]) || "",
     "CURRENCY":    getFirst(f, ["CURRENCY"]) || "",
-    "TAXABLE AMOUNT": taxable,
-    "IGST %": igstPct, "IGST_AMOUNT": igstAmt,
-    "SGST %": sgstPct, "SGST_AMOUNT": sgstAmt,
-    "CGST %": cgstPct, "CGST_AMOUNT": cgstAmt,
+    "TAXABLE_AMOUNT": taxable,
+    "IGST%": igstPct, "IGST_AMOUNT": igstAmt,
+    "SGST%": sgstPct, "SGST_AMOUNT": sgstAmt,
+    "CGST%": cgstPct, "CGST_AMOUNT": cgstAmt,
   };
 }
 

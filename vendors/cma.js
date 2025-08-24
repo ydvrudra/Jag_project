@@ -3,19 +3,21 @@ const { parseAmount, parsePercent, getFirst } = require("../helpers/common");
 
 function mapLineItem(line) {
   const f = line.valueObject || {};
+  console.log("Raw fields:", f);
+
 
   // Taxable value (CMA-CGM me "Taxable Amt." hai)
   const taxable = parseAmount(getFirst(f, [
-    "Taxable Amt.", "TAXABLE AMOUNT", "ASSESSABLE VALUE"
+     "TAXABLE_AMOUNT", "ASSESSABLE VALUE"
   ]));
 
   // Percent fields
-  const igstPct = parsePercent(getFirst(f, ["IGST %", "IGST@", "IGST_RATE"]));
-  const cgstPct = parsePercent(getFirst(f, ["CGST %", "CGST@", "CGST_RATE"]));
-  const sgstPct = parsePercent(getFirst(f, ["SGST %", "SGST@", "SGST_RATE"]));
+  const igstPct = parsePercent(getFirst(f, ["IGST%"]));
+  const cgstPct = parsePercent(getFirst(f, ["CGST%"]));
+  const sgstPct = parsePercent(getFirst(f, ["SGST%"]));
 
   // Amount fields (direct if given)
-  let igstAmt = parseAmount(getFirst(f, ["Tax Amount", "IGST_AMOUNT", "IGST AMOUNT"]));
+  let igstAmt = parseAmount(getFirst(f, ["IGST_AMOUNT"]));
   let cgstAmt = parseAmount(getFirst(f, ["CGST_AMOUNT","CGST AMOUNT"]));
   let sgstAmt = parseAmount(getFirst(f, ["SGST_AMOUNT","SGST AMOUNT"]));
 
@@ -24,22 +26,27 @@ function mapLineItem(line) {
   if (!cgstAmt && cgstPct) cgstAmt = +(taxable * cgstPct / 100).toFixed(2);
   if (!sgstAmt && sgstPct) sgstAmt = +(taxable * sgstPct / 100).toFixed(2);
 
-  return {
+  const mapped = {
     "SIZE": getFirst(f, ["SIZE"]) || "",
     "TYPE": getFirst(f, ["TYPE"]) || "",
-    "CHARGES DESCRIPTION": getFirst(f, [
-      "CHARGE_DESCRIPTION","DESCRIPTION","Service Description"
+    "CHARGE_DESCRIPTION": getFirst(f, [
+      "CHARGE_DESCRIPTION",
     ]) || "",
-    "HSN/SAC": getFirst(f, ["SAC","HSN/SAC"]) || "",
+    "HSN_SAC_CODE": getFirst(f, ["HSN_SAC_CODE"]) || "",
     "TAX": getFirst(f, ["TAX"]) || "",
     "BASED ON": getFirst(f, ["BASED ON"]) || "",
     "RATE": getFirst(f, ["RATE"]) || "",
     "CURRENCY": getFirst(f, ["CURRENCY"]) || "INR",
-    "TAXABLE AMOUNT": taxable,
-    "IGST %": igstPct, "IGST_AMOUNT": igstAmt,
-    "SGST %": sgstPct, "SGST_AMOUNT": sgstAmt,
-    "CGST %": cgstPct, "CGST_AMOUNT": cgstAmt,
+    "TAXABLE_AMOUNT": taxable,
+    "IGST%": igstPct, "IGST_AMOUNT": igstAmt,
+    "SGST%": sgstPct, "SGST_AMOUNT": sgstAmt,
+    "CGST%": cgstPct, "CGST_AMOUNT": cgstAmt,
   };
+  //console.log("Mapped CMA line item:", mapped);  
+
+  return mapped;
 }
+
+
 
 module.exports = { mapLineItem };

@@ -1,30 +1,8 @@
+// services/dbWriter.js
+
 require("dotenv").config();
 const sql = require("mssql");
 const { parseAmount, cleanText, invoiceKey } = require("../helpers/common");
-
-// Import vendor mappers
-const cma = require("../vendors/cma");
-const hapag = require("../vendors/hapag");
-const maersk = require("../vendors/maersk");
-const msc = require("../vendors/msc");
-
-// Map vendor names to their mappers
-const VENDOR_MAPPERS = {
-  cma,
-  hapag,
-  maersk,
-  msc,
-};
-
-// Utility: simple vendor detect from filename or other metadata
-function detectVendor(filename = "") {
-  filename = filename.toLowerCase();
-  if (filename.includes("cma")) return "cma";
-  if (filename.includes("hapag")) return "hapag";
-  if (filename.includes("maersk")) return "maersk";
-  if (filename.includes("msc")) return "msc";
-  return null;
-}
 
 const sqlCfg = {
   user: process.env.SQLSERVER_USER,
@@ -36,10 +14,24 @@ const sqlCfg = {
   pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
 };
 
+// Helper: Convert a value into formatted string number
 function toStringNumber(value) {
   const num = parseAmount(value);
   return (typeof num === "number" && !isNaN(num)) ? num.toFixed(2) : "0.00";
 }
+
+// Helper: Prioritize OCR value, else fallback to already mapped allRows
+function getContent(fieldObj, rowBackup, colName) {
+  let val = fieldObj?.valueString ?? fieldObj?.content ?? rowBackup?.[colName] ?? null;
+
+  if (val === null) return null;
+
+  // Agar val object hai (aur na string na number), toh return null ya "Not Available"
+  if (typeof val === "object") return null;  // ya return "Not Available";
+
+  return val.toString().trim();
+}
+
 
 async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
   const pool = await sql.connect(sqlCfg);
@@ -57,7 +49,7 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
       const group = groupMap.get(key);
       if (!group) continue;
 
-      // Compute totals from allRows
+      // Calculate totals from allRows using row indexes
       let totalIGST = 0, totalSGST = 0, totalCGST = 0;
       group.rowIndexes.forEach(idx => {
         totalIGST += Number(allRows[idx]["IGST_AMOUNT"] || 0);
@@ -66,7 +58,7 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
       });
       const totalGST = totalIGST + totalSGST + totalCGST;
 
-      // SQL find and insert/update invoices table
+      // Insert or update invoice record
       const find = new sql.Request(tx);
       find.input("invoice_number", sql.VarChar(100), invNo || null);
       find.input("supplier_gst", sql.VarChar(32), suppGst || null);
@@ -78,15 +70,16 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
       `);
 
       let invoiceId;
+
       if (existing.recordset.length) {
         invoiceId = existing.recordset[0].invoice_id;
-
         const upd = new sql.Request(tx);
         upd.input("invoice_id", sql.Int, invoiceId);
         upd.input("total_igst", sql.VarChar(50), totalIGST.toFixed(2));
         upd.input("total_sgst", sql.VarChar(50), totalSGST.toFixed(2));
         upd.input("total_cgst", sql.VarChar(50), totalCGST.toFixed(2));
         upd.input("total_gst", sql.VarChar(50), totalGST.toFixed(2));
+
         await upd.query(`
           UPDATE dbo.invoices
           SET total_igst=@total_igst,
@@ -110,7 +103,6 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
         ins.input("total_sgst", sql.VarChar(50), totalSGST.toFixed(2));
         ins.input("total_cgst", sql.VarChar(50), totalCGST.toFixed(2));
         ins.input("total_gst", sql.VarChar(50), totalGST.toFixed(2));
-
         ins.input("total_amount", sql.VarChar(50), toStringNumber(f["TOTAL AMOUNT"]?.valueString ?? f["TOTAL AMOUNT"]?.content));
         ins.input("customer_gst", sql.VarChar(32), f["CUSTOMER GST"]?.content ?? null);
         ins.input("customer_name", sql.VarChar(255), cleanText(f["CUSTOMER NAME"]?.content));
@@ -129,69 +121,69 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
         invoiceId = out.recordset[0].invoice_id;
       }
 
-      // Backfill invoiceId in allRows
+      // Attach invoice ID to all relevant rows
       group.rowIndexes.forEach(idx => {
         allRows[idx]["INVOICE ID"] = invoiceId;
       });
 
-      // Delete old child line items
-      const del = new sql.Request(tx);
-      del.input("invoice_id", sql.Int, invoiceId);
-      await del.query(`DELETE FROM dbo.invoicelineitems WHERE invoice_id=@invoice_id;`);
+      // Delete old child rows
+      await new sql.Request(tx)
+        .input("invoice_id", sql.Int, invoiceId)
+        .query(`DELETE FROM dbo.invoicelineitems WHERE invoice_id=@invoice_id;`);
 
-      // Detect vendor and get corresponding mapper
-      const vendor = detectVendor(file);
-      const mapper = VENDOR_MAPPERS[vendor];
-
-      // Insert new child line items, mapped via vendor mapper
+      // Insert new child line items
       const items = f["LineItems"]?.valueArray || [];
-      for (const line of items) {
-        // Raw line object
-        const rawLine = line.valueObject || {};
+      for (let i = 0; i < items.length; i++) {
+        const line = items[i];
+        const o = line.valueObject || {};
+        const idx = group.rowIndexes[i]; // matching overall row index
+        const rowBackup = allRows[idx] || {};
 
-        
+        //console.log("🔎 Raw line item:", JSON.stringify(o, null, 2));
 
-        // Use mapper if available else fallback to raw line
-        const mappedLine = mapper ? mapper.mapLineItem(line) : {
-          "SIZE": rawLine["SIZE"]?.content ?? null,
-          "TYPE": rawLine["TYPE"]?.content ?? null,
-          "CHARGES DESCRIPTION": rawLine["CHARGE_DESCRIPTION"]?.content ?? rawLine["CHARGES DESCRIPTION"]?.content ?? null,
-          "HSN/SAC": rawLine["HSN_SAC_CODE"]?.content ?? rawLine["HSN/SAC"]?.content ?? null,
-          "TAX": rawLine["TAX"]?.content ?? null,
-          "BASED ON": rawLine["BASED ON"]?.content ?? null,
-          "RATE": rawLine["RATE"]?.valueString ?? rawLine["RATE"]?.content ?? null,
-          "CURRENCY": rawLine["CURRENCY"]?.content ?? null,
-          "TAXABLE AMOUNT": rawLine["TAXABLE AMOUNT"]?.valueString ?? rawLine["TAXABLE AMOUNT"]?.content ?? null,
-          "IGST %": rawLine["IGST %"]?.valueString ?? rawLine["IGST %"]?.content ?? null,
-          "IGST_AMOUNT": rawLine["IGST_AMOUNT"]?.valueString ?? rawLine["IGST_AMOUNT"]?.content ?? null,
-          "SGST %": rawLine["SGST %"]?.valueString ?? rawLine["SGST %"]?.content ?? null,
-          "SGST_AMOUNT": rawLine["SGST_AMOUNT"]?.valueString ?? rawLine["SGST_AMOUNT"]?.content ?? null,
-          "CGST %": rawLine["CGST %"]?.valueString ?? rawLine["CGST %"]?.content ?? null,
-          "CGST_AMOUNT": rawLine["CGST_AMOUNT"]?.valueString ?? rawLine["CGST_AMOUNT"]?.content ?? null,
+        const insertPayload = {
+          invoice_id: invoiceId,
+          size: getContent(o["SIZE"], rowBackup, "SIZE"),
+          type: getContent(o["TYPE"], rowBackup, "TYPE"),
+          charges_description: getContent(o["CHARGE_DESCRIPTION"], rowBackup, "CHARGE_DESCRIPTION"),
+          hsn_sac: getContent(o["HSN_SAC_CODE"], rowBackup, "HSN_SAC_CODE") || getContent(o["HSN/SAC"], rowBackup, "HSN/SAC"),
+          tax: getContent(o["TAX"], rowBackup, "TAX"),
+          based_on: getContent(o["BASED ON"], rowBackup, "BASED ON"),
+          rate: toStringNumber(getContent(o["RATE"], rowBackup, "RATE")),
+          currency: getContent(o["CURRENCY"], rowBackup, "CURRENCY"),
+          taxable_amount: toStringNumber(
+            getContent(o["TAXABLE_AMOUNT"], rowBackup, "TAXABLE_AMOUNT") ||
+            getContent(o["TAXABLE AMOUNT"], rowBackup, "TAXABLE AMOUNT") ||
+            getContent(o["AMOUNT"], rowBackup, "AMOUNT")
+          ),
+          igst_percent: getContent(o["IGST%"], rowBackup, "IGST%"),
+          igst_amount: toStringNumber(getContent(o["IGST_AMOUNT"], rowBackup, "IGST_AMOUNT")),
+          sgst_percent: getContent(o["SGST%"], rowBackup, "SGST%"),
+          sgst_amount: toStringNumber(getContent(o["SGST_AMOUNT"], rowBackup, "SGST_AMOUNT")),
+          cgst_percent: getContent(o["CGST%"], rowBackup, "CGST%"),
+          cgst_amount: toStringNumber(getContent(o["CGST_AMOUNT"], rowBackup, "CGST_AMOUNT")),
         };
 
-        // Insert mapped line item
+       // console.log("📥 Mapped DB line item:", insertPayload);
+
         const insChild = new sql.Request(tx);
-        const igstPctValue = mappedLine["IGST %"];
-          const cgstPctValue = mappedLine["CGST %"];
-          const sgstPctValue = mappedLine["SGST %"];
-          const taxableAmtValue = mappedLine["TAXABLE AMOUNT"];
         insChild.input("invoice_id", sql.Int, invoiceId);
-        insChild.input("size", sql.VarChar(50), mappedLine["SIZE"] ?? null);
-        insChild.input("type", sql.VarChar(50), mappedLine["TYPE"] ?? null);
-        insChild.input("charges_description", sql.VarChar(255), mappedLine["CHARGES DESCRIPTION"] ?? null);
-        insChild.input("hsn_sac", sql.VarChar(50), mappedLine["HSN/SAC"] ?? null);
-        insChild.input("tax", sql.VarChar(20), mappedLine["TAX"] ?? null);
-        insChild.input("based_on", sql.VarChar(50), mappedLine["BASED ON"] ?? null);
-        insChild.input("rate", sql.VarChar(50), toStringNumber(mappedLine["RATE"]));
-        insChild.input("currency", sql.VarChar(10), mappedLine["CURRENCY"] ?? null);
-       insChild.input("igst_percent", sql.VarChar(50), igstPctValue !== undefined ? toStringNumber(igstPctValue) : "");
-        insChild.input("igst_amount", sql.VarChar(50), toStringNumber(mappedLine["IGST_AMOUNT"]));
-        insChild.input("sgst_percent", sql.VarChar(50), sgstPctValue !== undefined ? toStringNumber(sgstPctValue) : "");
-        insChild.input("sgst_amount", sql.VarChar(50), toStringNumber(mappedLine["SGST_AMOUNT"]));
-        insChild.input("cgst_percent", sql.VarChar(50), cgstPctValue !== undefined ? toStringNumber(cgstPctValue) : "");
-        insChild.input("cgst_amount", sql.VarChar(50), toStringNumber(mappedLine["CGST_AMOUNT"]));
-        insChild.input("taxable_amount", sql.VarChar(50), taxableAmtValue !== undefined ? toStringNumber(taxableAmtValue) : "");
+        insChild.input("size", sql.VarChar(50), insertPayload.size);
+        insChild.input("type", sql.VarChar(50), insertPayload.type);
+        insChild.input("charges_description", sql.VarChar(255), insertPayload.charges_description);
+        insChild.input("hsn_sac", sql.VarChar(50), insertPayload.hsn_sac);
+        insChild.input("tax", sql.VarChar(20), insertPayload.tax);
+        insChild.input("based_on", sql.VarChar(50), insertPayload.based_on);
+        insChild.input("rate", sql.VarChar(50), insertPayload.rate);
+        insChild.input("currency", sql.VarChar(10), insertPayload.currency);
+        insChild.input("taxable_amount", sql.VarChar(50), insertPayload.taxable_amount);
+        insChild.input("igst_percent", sql.VarChar(50), insertPayload.igst_percent);
+        insChild.input("igst_amount", sql.VarChar(50), insertPayload.igst_amount);
+        insChild.input("sgst_percent", sql.VarChar(50), insertPayload.sgst_percent);
+        insChild.input("sgst_amount", sql.VarChar(50), insertPayload.sgst_amount);
+        insChild.input("cgst_percent", sql.VarChar(50), insertPayload.cgst_percent);
+        insChild.input("cgst_amount", sql.VarChar(50), insertPayload.cgst_amount);
+
         await insChild.query(`
           INSERT INTO dbo.invoicelineitems
           (invoice_id, size, type, charges_description, hsn_sac, tax, based_on, rate, currency, taxable_amount,
@@ -205,6 +197,7 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
     await tx.commit();
     pool.close();
   } catch (err) {
+    console.error("Error in writeToSqlAndFillIds:", err);
     await tx.rollback();
     sql.close();
     throw err;

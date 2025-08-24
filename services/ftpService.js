@@ -1,6 +1,6 @@
 const ftp = require("basic-ftp");
 
-async function uploadToFtp(localPath, remoteFileName) {
+async function uploadToFtp(localPath, fileName) {
   const client = new ftp.Client();
   try {
     await client.access({
@@ -9,25 +9,17 @@ async function uploadToFtp(localPath, remoteFileName) {
       password: process.env.FTP_PASSWORD,
       secure: false,
     });
-
-    //  Remote path banate waqt clean kar rahe hain
-    const remoteDir = process.env.FTP_REMOTE_DIR.replace(/\/$/, "");
-    const remotePath = `${remoteDir}/${remoteFileName}`;
-
-    console.log(" Uploading to:", remotePath);
-    await client.uploadFrom(localPath, remotePath);
-    console.log("FTP Upload Success:", remoteFileName);
-
+    await client.uploadFrom(localPath, `/public_html/UserData/Invoices/Processed_Invoices/${fileName}`);
+    console.log("Uploaded to FTP:", fileName);
   } catch (err) {
-    console.error(" FTP Upload Failed:", remoteFileName, err.message);
+    console.error("FTP upload error:", err.message);
     throw err;
   } finally {
     client.close();
   }
 }
 
-// ✅ Delete function
-async function deleteFromFtpAfterProcessing(remoteFileName) {
+async function deleteFromFtpAfterProcessing(fileName) {
   const client = new ftp.Client();
   try {
     await client.access({
@@ -37,18 +29,30 @@ async function deleteFromFtpAfterProcessing(remoteFileName) {
       secure: false,
     });
 
-    // Yaha bhi clean remote path
-    const remotePath = `/public_html/UserData/Invoices/UploadInvoice/${remoteFileName}`;
-    console.log("Deleting remote file from FTP:", remotePath);
+    const decodedFileName = decodeURIComponent(fileName); // Fix here
+    const remotePath = `/public_html/UserData/Invoices/UploadInvoice/${decodedFileName}`;
+    console.log("Attempting to delete remote file:", remotePath);
 
+    // Small delay for FTP reliability
+    await new Promise((r) => setTimeout(r, 300));
     await client.remove(remotePath);
-    console.log("Successfully deleted from remote UploadInvoice folder");
 
+    const list = await client.list("/public_html/UserData/Invoices/UploadInvoice/");
+    const stillThere = list.some((f) => f.name === decodedFileName);
+    if (stillThere) {
+      console.error("FTP delete failed – file still present:", decodedFileName);
+    } else {
+      console.log("Successfully deleted from FTP:", decodedFileName);
+    }
   } catch (err) {
-    console.error(" Remote FTP Delete Failed:", err.message);
+    console.error("FTP delete error:", err.message);
   } finally {
     client.close();
   }
 }
 
-module.exports = { uploadToFtp, deleteFromFtpAfterProcessing };
+
+module.exports = {
+  uploadToFtp,
+  deleteFromFtpAfterProcessing,
+};

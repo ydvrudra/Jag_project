@@ -64,7 +64,7 @@ async function saveToExcelAndDb(dataArray) {
       totalIGST += Number(rowChild["IGST_AMOUNT"] || 0);
       totalSGST += Number(rowChild["SGST_AMOUNT"] || 0);
       totalCGST += Number(rowChild["CGST_AMOUNT"] || 0);
-      totalTaxable += Number(rowChild["TAXABLE AMOUNT"] || 0);
+      totalTaxable += Number(rowChild["TAXABLE_AMOUNT"] || 0);
 
       const row = {
         ...(isFirstRow ? baseParent : Object.fromEntries(PARENT_COLUMNS.map(col => [col, ""]))),
