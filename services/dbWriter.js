@@ -1,8 +1,6 @@
 // services/dbWriter.js
-
 require("dotenv").config();
 const sql = require("mssql");
-const { parseAmount, cleanText, invoiceKey } = require("../helpers/common");
 
 const sqlCfg = {
   user: process.env.SQLSERVER_USER,
@@ -13,7 +11,11 @@ const sqlCfg = {
   options: { trustServerCertificate: (process.env.SQLSERVER_TRUSTCERT || "true") === "true" },
   pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
 };
+const pool = new sql.ConnectionPool(sqlCfg);
+const poolConnect = pool.connect();
+const { parseAmount, cleanText, invoiceKey } = require("../helpers/common");
 
+    
 // Helper: Convert a value into formatted string number
 function toStringNumber(value) {
   const num = parseAmount(value);
@@ -204,4 +206,4 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
   }
 }
 
-module.exports = { writeToSqlAndFillIds };
+module.exports = { writeToSqlAndFillIds ,sql, pool, poolConnect};

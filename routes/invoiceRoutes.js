@@ -7,14 +7,14 @@ const { uploadDir, extractedExcelFile } = require("../config/constants");
 const { analyzeInvoiceWithAzure } = require("../services/azureService");
 const { uploadToFtp ,deleteFromFtpAfterProcessing } = require("../services/ftpService");
 const { saveToExcel } = require("../services/excelhelper");
-
+const verifyUser = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.get("/process-all-invoices", async (req, res) => {
+router.get("/process-all-invoices",verifyUser, async (req, res) => {
   try {
-    const baseUrl = "http://www.study.jagsoftware.in/public_html/UserData/Invoices/UploadInvoice/";  
-    const html = await axios.get(baseUrl); 
+    const baseUrl = process.env.INVOICE_BASE_URL;  
+    const html = await axios.get(baseUrl);                            
     const $ = cheerio.load(html.data);
 
     const pdfLinks = [];
@@ -63,6 +63,8 @@ router.get("/process-all-invoices", async (req, res) => {
         await uploadToFtp(localPath, fileName);
         await deleteFromFtpAfterProcessing(fileName);
 
+        //console.log("processed:", fileName)
+
         try {
           fs.unlinkSync(localPath);
           console.log("🗑️ File deleted after successful processing.");
@@ -73,7 +75,7 @@ router.get("/process-all-invoices", async (req, res) => {
         results.push({ fileName, status: "success" });
 
       } catch (err) {
-        console.error(`❌ Failed processing ${fileName}:`, err.message);
+        console.error(` Failed processing ${fileName}:`, err.message);
         errors.push({ fileName, error: err.message });
       }
     }
@@ -106,3 +108,4 @@ router.get("/download-excel", (req, res) => {
 });
 
 module.exports = router;
+
