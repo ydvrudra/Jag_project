@@ -6,7 +6,7 @@ const cma   = require("../vendors/cma");
 const maersk= require("../vendors/maersk");
 const msc   = require("../vendors/msc");
 
-const { writeToSqlAndFillIds } = require("./dbWriter");
+const { writeToSqlAndFillIds } = require("../repositories/invoiceRepository");
 const { writeExcel } = require("./excelWriter");
 
 const VENDOR_MAPPERS = {

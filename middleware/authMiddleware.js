@@ -1,28 +1,24 @@
-const { pool, poolConnect, sql } = require('../services/dbWriter');
+const { pool, poolConnect, sql } = require('../config/sqlConfig');
 
 async function verifyUser(req, res, next) {
   const { username, password } = req.headers;
 
-  // ✅ Bypass if already verified userId is passed from Kaizen or SQL
-  if (req.headers['x-user-verified'] === 'true') {
-    return next();
-  }
-
   if (!username || !password) {
-    return res.status(401).json({ error: "Username and password required" });
+    return res.status(401).json({ error: "Username and password is required" });
   }
 
   try {
-    const pool = await sql.connect(dbConfig);
+    await poolConnect; // wait for global pool to connect
     const request = pool.request();
     request.input("Username", sql.VarChar(100), username);
     request.input("password", sql.VarChar(100), password);
 
     const result = await request.query("SELECT dbo.Fn_VerifyUser(@Username, @password) AS UserId");
+
     const userId = result.recordset[0]?.UserId;
 
     if (!userId || userId === 0) {
-      return res.status(403).json({ error: "Invalid credentials" });
+      return res.status(403).json({ message: "Invalid credentials" });
     }
 
     req.userId = userId;
@@ -32,6 +28,5 @@ async function verifyUser(req, res, next) {
     return res.status(500).json({ error: "Internal server error during authentication" });
   }
 }
-
 
 module.exports = verifyUser;
