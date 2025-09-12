@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.get("/process-all-invoices", verifyUser, processAllInvoices);
 router.get("/download-excel",verifyUser, downloadExcelFile);
-router.get("/fetch-exchange-rates", fetchExchangeRates);
+router.get("/fetch-exchange-rates", verifyUser, fetchExchangeRates);
 
 module.exports = router;
 
