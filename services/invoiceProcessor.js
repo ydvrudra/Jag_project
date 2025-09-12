@@ -1,8 +1,9 @@
+//services/invoiceProcessor
 const fs = require("fs");
 const axios = require("axios");
 const { analyzeInvoiceWithAzure } = require("./azureService");
 const { uploadToFtp, deleteFromFtpAfterProcessing } = require("./ftpService");
-const { saveToExcel } = require("./excelHelper");
+const { saveToExcel } = require("./excelhelper");
 
 
 exports.processInvoice = async (fullUrl, fileName, localPath) => {
