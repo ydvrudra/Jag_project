@@ -8,7 +8,6 @@ function feet3ToCBM(lft, wft, hft) {
 
 async function allocateTrucksAndPrice({
   client,
-  hdr,
   pkgs,
   vehicles,
   persist,
@@ -17,7 +16,7 @@ async function allocateTrucksAndPrice({
 }) {
   if (!pkgs || !pkgs.length) return { status: "no-packages", message: "No packages to allocate", allocations: [] };
 
-  // Prepare trucks with all dimensions
+  // ✅ Prepare trucks with all dimensions (SAME LOGIC)
   vehicles = (vehicles || []).map(v => {
     const copy = { ...v };
     copy.usableLengthFt = Number(copy.usableLengthFt || copy.length || 0);
@@ -35,7 +34,7 @@ async function allocateTrucksAndPrice({
     console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
   });
 
-  // Prepare packages
+  // ✅ Prepare packages (SAME LOGIC)
   let items = pkgs.map(p => {
     const lengthFt = Number(p.lengthFt || p.length || 0);
     const widthFt = Number(p.widthFt || p.width || 0);
@@ -64,7 +63,7 @@ async function allocateTrucksAndPrice({
 
   const allocationsInstances = [];
 
-  // ✅ REALISTIC: Dimension checking with FIXED HEIGHT
+  // ✅ REALISTIC: Dimension checking with FIXED HEIGHT (SAME LOGIC)
   function canFitSingleUnitInTruck(it, truck) {
     const rotations = [
       [it.lengthFt, it.widthFt, it.heightFt],
@@ -78,7 +77,7 @@ async function allocateTrucksAndPrice({
     );
   }
 
-  // ✅ COMPLETELY REWRITTEN: REALISTIC MIXED ARRANGEMENT CALCULATION
+  // ✅ COMPLETELY REWRITTEN: REALISTIC MIXED ARRANGEMENT CALCULATION (SAME LOGIC)
   function calculateMaxPhysicalUnits(it, inst, truck) {
     console.log(`\n🔍 REAL MIXED ARRANGEMENT: ${it.pkgId} (${it.stackable ? 'STACKABLE' : 'NON-STACKABLE'}) in ${inst.truckName}`);
     
@@ -200,7 +199,7 @@ async function allocateTrucksAndPrice({
     return maxUnits;
   }
 
-  // ✅ REALISTIC: Maximum units calculation
+  // ✅ REALISTIC: Maximum units calculation (SAME LOGIC)
   function maxFitUnits(it, inst, remainingQty) {
     const t = inst.truckObj;
     
@@ -243,7 +242,7 @@ async function allocateTrucksAndPrice({
     console.log(`   📦 Placed ${qtyToPlace} ${it.pkgId}`);
   }
 
-  // ✅ IMPROVED: Find realistic truck for items
+  // ✅ IMPROVED: Find realistic truck for items (SAME LOGIC)
   function findBestTruckForItems(remainingItems, usedTruckIds) {
     console.log(`\n🔍 FINDING REALISTIC TRUCK FOR ${remainingItems.length} ITEMS...`);
     
@@ -319,7 +318,7 @@ async function allocateTrucksAndPrice({
     return null;
   }
 
-  // ✅ NEW: Mixed arrangement feasibility check
+  // ✅ NEW: Mixed arrangement feasibility check (SAME LOGIC)
   function checkMixedArrangementFeasibility(instance, truck) {
     const items = instance.items;
     const stackableItems = items.filter(item => item.stackable);
@@ -340,7 +339,7 @@ async function allocateTrucksAndPrice({
     return (stackableVolume + nonStackableVolume) <= truck.cbmCapacity;
   }
 
-  // ✅ SIMPLIFIED AND REALISTIC ALLOCATION STRATEGY
+  // ✅ SIMPLIFIED AND REALISTIC ALLOCATION STRATEGY (SAME LOGIC)
   console.log("\n🚛 STARTING REALISTIC ALLOCATION...");
   
   let remainingItems = items.map(it => ({ ...it }));
@@ -444,16 +443,12 @@ async function allocateTrucksAndPrice({
     console.log(`   ⚖️  ${alloc.usedWeightKg}kg / ${alloc.capacityWeight}kg (${alloc.weightUtilization})`);
   });
 
-  // Call finalization helper
+  // ✅ Call finalization helper with CLEAN parameters
   const { totalTruckingChargesInUSD, allocationsStatus } = await processFinalAllocations({
     allocationsInstances,
     remainingPkgs: [],
     client,
-    hdr,
-    vehicles,
-    persist,
-    recordId,
-    userId
+    vehicles
   });
 
   if (allocationsStatus) return allocationsStatus;
