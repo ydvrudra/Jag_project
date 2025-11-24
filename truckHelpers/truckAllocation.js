@@ -14,6 +14,8 @@ async function allocateTrucksAndPrice({
   recordId,
   userId
 }) {
+
+  
   if (!pkgs || !pkgs.length) return { status: "no-packages", message: "No packages to allocate", allocations: [] };
 
   // ✅ Prepare trucks with all dimensions (SAME LOGIC)
@@ -29,9 +31,9 @@ async function allocateTrucksAndPrice({
     return copy;
   }).sort((a, b) => a.cbmCapacity - b.cbmCapacity);
 
-  console.log("\n=== Available Trucks (Smallest to Largest) ===");
+ // console.log("\n=== Available Trucks (Smallest to Largest) ===");
   vehicles.forEach(v => {
-    console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
+   // console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
   });
 
   // ✅ Prepare packages (SAME LOGIC)
@@ -52,14 +54,14 @@ async function allocateTrucksAndPrice({
     };
   });
 
-  console.log("\n=== Packages to Allocate ===");
+ // console.log("\n=== Packages to Allocate ===");
   items.forEach(it => {
-    console.log(`Pkg: ${it.pkgId}, Size: ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, CBM: ${it.cbm}, Weight: ${it.weightKg}kg, Qty: ${it.qty}, Stackable: ${it.stackable}`);
+  //  console.log(`Pkg: ${it.pkgId}, Size: ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, CBM: ${it.cbm}, Weight: ${it.weightKg}kg, Qty: ${it.qty}, Stackable: ${it.stackable}`);
   });
 
   const totalCBM = items.reduce((sum, it) => sum + (it.cbm * it.qty), 0);
   const totalWeight = items.reduce((sum, it) => sum + (it.weightKg * it.qty), 0);
-  console.log(`\n📊 TOTAL REQUIREMENTS: ${totalCBM.toFixed(2)} CBM, ${totalWeight}kg`);
+ // console.log(`\n📊 TOTAL REQUIREMENTS: ${totalCBM.toFixed(2)} CBM, ${totalWeight}kg`);
 
   const allocationsInstances = [];
 
@@ -79,7 +81,7 @@ async function allocateTrucksAndPrice({
 
   // ✅ COMPLETELY REWRITTEN: REALISTIC MIXED ARRANGEMENT CALCULATION (SAME LOGIC)
   function calculateMaxPhysicalUnits(it, inst, truck) {
-    console.log(`\n🔍 REAL MIXED ARRANGEMENT: ${it.pkgId} (${it.stackable ? 'STACKABLE' : 'NON-STACKABLE'}) in ${inst.truckName}`);
+    //console.log(`\n🔍 REAL MIXED ARRANGEMENT: ${it.pkgId} (${it.stackable ? 'STACKABLE' : 'NON-STACKABLE'}) in ${inst.truckName}`);
     
     const existingItems = inst.items;
     
@@ -140,8 +142,8 @@ async function allocateTrucksAndPrice({
 
     const available = Math.max(0, totalCapacity - existingStackableCount);
     
-    console.log(`   STACKABLE: ${maxUnitsPerLayer} units/layer × ${maxLayers} layers = ${totalCapacity} total`);
-    console.log(`   Existing Stackable: ${existingStackableCount}, Available: ${available}`);
+    //console.log(`   STACKABLE: ${maxUnitsPerLayer} units/layer × ${maxLayers} layers = ${totalCapacity} total`);
+    //console.log(`   Existing Stackable: ${existingStackableCount}, Available: ${available}`);
     
     return available;
   }
@@ -195,7 +197,7 @@ async function allocateTrucksAndPrice({
         }
     }
 
-    console.log(`   NON-STACKABLE: Max ${maxUnits} units (dedicated floor space)`);
+ // console.log(`   NON-STACKABLE: Max ${maxUnits} units (dedicated floor space)`);
     return maxUnits;
   }
 
@@ -204,7 +206,7 @@ async function allocateTrucksAndPrice({
     const t = inst.truckObj;
     
     if (!canFitSingleUnitInTruck(it, t)) {
-        console.log(`   ❌ Single unit cannot fit`);
+       // console.log(`   ❌ Single unit cannot fit`);
         return 0;
     }
 
@@ -221,7 +223,7 @@ async function allocateTrucksAndPrice({
 
     const result = Math.max(0, Math.min(remainingQty, maxByCBM, maxByWeight, maxPhysical));
     
-    console.log(`   📊 Constraints - CBM:${maxByCBM}, Weight:${maxByWeight}, Physical:${maxPhysical} = Final:${result}`);
+   // console.log(`   📊 Constraints - CBM:${maxByCBM}, Weight:${maxByWeight}, Physical:${maxPhysical} = Final:${result}`);
     
     return result;
   }
@@ -239,12 +241,12 @@ async function allocateTrucksAndPrice({
         inst.items.push({ ...it, qty: qtyToPlace });
     }
     
-    console.log(`   📦 Placed ${qtyToPlace} ${it.pkgId}`);
+    //console.log(`   📦 Placed ${qtyToPlace} ${it.pkgId}`);
   }
 
   // ✅ IMPROVED: Find realistic truck for items (SAME LOGIC)
   function findBestTruckForItems(remainingItems, usedTruckIds) {
-    console.log(`\n🔍 FINDING REALISTIC TRUCK FOR ${remainingItems.length} ITEMS...`);
+    //console.log(`\n🔍 FINDING REALISTIC TRUCK FOR ${remainingItems.length} ITEMS...`);
     
     const availableTrucks = vehicles.filter(v => !usedTruckIds.includes(v.truckId));
     
@@ -252,7 +254,7 @@ async function allocateTrucksAndPrice({
     let bestScore = -1;
 
     for (const truck of availableTrucks) {
-        console.log(`   Testing ${truck.truckName}...`);
+       // console.log(`   Testing ${truck.truckName}...`);
         
         const tempInstance = {
             truckObj: truck,
@@ -291,7 +293,7 @@ async function allocateTrucksAndPrice({
         }
 
         if (!realisticAllocation || totalItemsPlaced === 0) {
-            console.log(`   ❌ Not realistic in ${truck.truckName}`);
+           // console.log(`   ❌ Not realistic in ${truck.truckName}`);
             continue;
         }
 
@@ -302,7 +304,7 @@ async function allocateTrucksAndPrice({
         
         const score = (totalItemsPlaced * 0.6) + (utilizationScore * 0.4);
         
-        console.log(`   ${truck.truckName} Score: ${score.toFixed(2)} (Items: ${totalItemsPlaced}, Utilization: ${(utilizationScore * 100).toFixed(1)}%)`);
+       // console.log(`   ${truck.truckName} Score: ${score.toFixed(2)} (Items: ${totalItemsPlaced}, Utilization: ${(utilizationScore * 100).toFixed(1)}%)`);
 
         if (score > bestScore) {
             bestScore = score;
@@ -311,7 +313,7 @@ async function allocateTrucksAndPrice({
     }
 
     if (bestTruck) {
-        console.log(`   🏆 BEST REALISTIC TRUCK: ${bestTruck.truckName}`);
+       // console.log(`   🏆 BEST REALISTIC TRUCK: ${bestTruck.truckName}`);
         return bestTruck;
     }
     
@@ -339,114 +341,164 @@ async function allocateTrucksAndPrice({
     return (stackableVolume + nonStackableVolume) <= truck.cbmCapacity;
   }
 
-  // ✅ SIMPLIFIED AND REALISTIC ALLOCATION STRATEGY (SAME LOGIC)
-  console.log("\n🚛 STARTING REALISTIC ALLOCATION...");
+// ✅ SIMPLIFIED AND REALISTIC ALLOCATION STRATEGY (FIXED VERSION)
+console.log("\n🚛 STARTING REALISTIC ALLOCATION...");
+
+let remainingItems = items.map(it => ({ ...it }));
+const optimizedAllocations = [];
+
+// Sort by difficulty (non-stackable first, then by size)
+remainingItems.sort((a, b) => {
+  if (a.stackable !== b.stackable) return a.stackable ? 1 : -1;
+  return (b.lengthFt * b.widthFt * b.heightFt) - (a.lengthFt * a.widthFt * a.heightFt);
+});
+
+let safetyCounter = 0;
+const MAX_ITERATIONS = vehicles.length * 20;
+
+while (remainingItems.length > 0 && safetyCounter < MAX_ITERATIONS) {
+  safetyCounter++;
   
-  let remainingItems = items.map(it => ({ ...it }));
-  const optimizedAllocations = [];
+  const currentItem = remainingItems[0];
+  if (currentItem.qty <= 0) {
+    remainingItems.shift();
+    continue;
+  }
 
-  // Sort by difficulty (non-stackable first, then by size)
-  remainingItems.sort((a, b) => {
-    if (a.stackable !== b.stackable) return a.stackable ? 1 : -1;
-    return (b.lengthFt * b.widthFt) - (a.lengthFt * a.widthFt);
-  });
+  console.log(`\n=== ALLOCATING ${currentItem.pkgId} (${currentItem.lengthFt}x${currentItem.widthFt}x${currentItem.heightFt}ft, ${currentItem.qty} remaining) ===`);
 
-  while (remainingItems.length > 0) {
-    const currentItem = remainingItems[0];
-    if (currentItem.qty <= 0) {
-        remainingItems.shift();
-        continue;
+  // Try existing trucks first (IMPROVED LOGIC)
+  let placedInExisting = false;
+  for (const inst of optimizedAllocations) {
+    console.log(`   🔍 Checking existing truck: ${inst.truckName}`);
+    const canPlace = maxFitUnits(currentItem, inst, currentItem.qty);
+    console.log(`   📦 Can place ${canPlace} units in ${inst.truckName}`);
+    
+    if (canPlace > 0) {
+      placeUnits(currentItem, inst, canPlace);
+      currentItem.qty -= canPlace;
+      placedInExisting = true;
+      console.log(`✅ Placed ${canPlace} units in existing ${inst.truckName}`);
+      
+      if (currentItem.qty <= 0) {
+        console.log(`   🎯 Fully allocated in existing truck`);
+        break;
+      } else {
+        console.log(`   🔄 Still ${currentItem.qty} units remaining, continuing...`);
+      }
+    }
+  }
+
+  // If still items remaining, find new truck - CRITICAL FIX: ALLOW SAME TRUCK TYPE MULTIPLE TIMES
+  if (currentItem.qty > 0) {
+    console.log(`   🔎 Looking for new truck for remaining ${currentItem.qty} units...`);
+    
+    // ✅ CRITICAL FIX: Don't filter by used truck IDs - allow same truck type multiple times
+    const availableTrucks = vehicles; // Use ALL trucks, including same types
+    
+    console.log(`   🚚 Available trucks: ${availableTrucks.map(t => t.truckName).join(', ')}`);
+    
+    let bestTruck = null;
+    let bestFitQty = 0;
+
+    // Find the best truck that can fit at least some quantity
+    for (const truck of availableTrucks) {
+      const tempInst = {
+        truckObj: truck,
+        usedCBM: 0,
+        usedWeight: 0,
+        items: []
+      };
+
+      const canPlace = maxFitUnits(currentItem, tempInst, currentItem.qty);
+      console.log(`   🔍 ${truck.truckName} can fit: ${canPlace} units`);
+      
+      if (canPlace > bestFitQty) {
+        bestFitQty = canPlace;
+        bestTruck = truck;
+      }
     }
 
-    console.log(`\n=== ALLOCATING ${currentItem.pkgId} (${currentItem.qty} remaining) ===`);
+    if (bestTruck && bestFitQty > 0) {
+      const newInst = {
+        truckId: bestTruck.truckId,
+        truckName: bestTruck.truckName,
+        truckObj: bestTruck,
+        usedCBM: 0,
+        usedWeight: 0,
+        items: []
+      };
 
-    // Try existing trucks first
-    let placed = false;
-    for (const inst of optimizedAllocations) {
+      const canPlace = maxFitUnits(currentItem, newInst, currentItem.qty);
+      if (canPlace > 0) {
+        placeUnits(currentItem, newInst, canPlace);
+        currentItem.qty -= canPlace;
+        optimizedAllocations.push(newInst);
+        console.log(`🚛 Created ${bestTruck.truckName} with ${canPlace} units`);
+        
+        // ✅ After creating new truck, try again in ALL existing trucks
+        if (currentItem.qty > 0) {
+          console.log(`   🔄 Still ${currentItem.qty} units remaining, checking ALL trucks again...`);
+          continue; // Go back to check all trucks again
+        }
+      }
+    } else {
+      // ❌ If current item can't fit in any truck (new or existing)
+      console.log(`⚠️ ${currentItem.pkgId} (${currentItem.lengthFt}x${currentItem.widthFt}x${currentItem.heightFt}ft) cannot fit in any truck`);
+      
+      // Final check in all existing trucks
+      let canFitAnywhere = false;
+      for (const inst of optimizedAllocations) {
         const canPlace = maxFitUnits(currentItem, inst, currentItem.qty);
         if (canPlace > 0) {
-            placeUnits(currentItem, inst, canPlace);
-            currentItem.qty -= canPlace;
-            placed = true;
-            console.log(`✅ Placed in existing ${inst.truckName}`);
-            break;
+          console.log(`   💡 But can fit ${canPlace} units in existing ${inst.truckName}!`);
+          placeUnits(currentItem, inst, canPlace);
+          currentItem.qty -= canPlace;
+          canFitAnywhere = true;
+          break;
         }
+      }
+      
+      if (!canFitAnywhere) {
+        console.log(`   ❌ Really cannot fit anywhere, skipping to next item`);
+        remainingItems.shift(); // Remove current item
+      }
     }
-
-    // If not placed, find new truck
-    if (!placed && currentItem.qty > 0) {
-        const usedTruckIds = optimizedAllocations.map(inst => inst.truckId);
-        const bestTruck = findBestTruckForItems([currentItem], usedTruckIds);
-        
-        if (bestTruck) {
-            const newInst = {
-                truckId: bestTruck.truckId,
-                truckName: bestTruck.truckName,
-                truckObj: bestTruck,
-                usedCBM: 0,
-                usedWeight: 0,
-                items: []
-            };
-
-            const canPlace = maxFitUnits(currentItem, newInst, currentItem.qty);
-            if (canPlace > 0) {
-                placeUnits(currentItem, newInst, canPlace);
-                currentItem.qty -= canPlace;
-                optimizedAllocations.push(newInst);
-                console.log(`🚛 Created ${bestTruck.truckName}`);
-            }
-        }
-    }
-
-    // Remove fully allocated items
-    remainingItems = remainingItems.filter(it => it.qty > 0);
-    
-    // Safety break
-    if (optimizedAllocations.length > vehicles.length) break;
   }
 
-  // FINAL VALIDATION
-  if (remainingItems.length > 0) {
-    return { 
-        status: "fail", 
-        message: `Cannot fit all packages. ${remainingItems.length} items remaining.`,
-        allocations: []
-    };
+  // Remove fully allocated items
+  if (currentItem.qty <= 0) {
+    remainingItems.shift();
   }
-
-  // Update final allocations
-  allocationsInstances.length = 0;
-  optimizedAllocations.forEach(inst => allocationsInstances.push(inst));
-
-  // FINAL SUMMARY
-  console.log("\n" + "=".repeat(50));
-  console.log("🎯 FINAL REALISTIC ALLOCATION");
-  console.log("=".repeat(50));
   
-  const aggregated = allocationsInstances.map(inst => ({
-    truckId: inst.truckId,
-    truckName: inst.truckName,
-    items: inst.items.map(it => ({ pkgId: it.pkgId, qty: it.qty })),
-    totalItems: inst.items.reduce((sum, item) => sum + item.qty, 0),
-    usedCBM: Number(inst.usedCBM.toFixed(6)),
-    usedWeightKg: inst.usedWeight,
-    capacityCBM: inst.truckObj.cbmCapacity,
-    capacityWeight: inst.truckObj.maxWeightKg,
-    cbmUtilization: `${((inst.usedCBM / inst.truckObj.cbmCapacity) * 100).toFixed(1)}%`,
-    weightUtilization: `${((inst.usedWeight / inst.truckObj.maxWeightKg) * 100).toFixed(1)}%`
-  }));
+  // Safety check
+  if (safetyCounter >= MAX_ITERATIONS) {
+    console.log("🛑 SAFETY BREAK: Maximum iterations reached");
+    break;
+  }
+}
 
-  aggregated.forEach(alloc => {
-    console.log(`\n🚛 ${alloc.truckName}:`);
-    console.log(`   📦 ${alloc.items.map(it => `${it.pkgId}×${it.qty}`).join(', ')}`);
-    console.log(`   📊 ${alloc.usedCBM}CBM / ${alloc.capacityCBM}CBM (${alloc.cbmUtilization})`);
-    console.log(`   ⚖️  ${alloc.usedWeightKg}kg / ${alloc.capacityWeight}kg (${alloc.weightUtilization})`);
-  });
+// Calculate total allocated items
+const totalAllocated = items.reduce((total, item) => total + item.qty, 0) - 
+                     remainingItems.reduce((total, item) => total + item.qty, 0);
 
-  // ✅ Call finalization helper with CLEAN parameters
+console.log(`\n📊 ALLOCATION SUMMARY: ${totalAllocated}/${items.reduce((total, item) => total + item.qty, 0)} items allocated in ${optimizedAllocations.length} trucks`);
+
+// Update final allocations
+allocationsInstances.length = 0;
+optimizedAllocations.forEach(inst => allocationsInstances.push(inst));
+
+// Prepare response based on allocation status
+if (remainingItems.length > 0) {
+  const remainingSummary = remainingItems.map(it => 
+    `${it.pkgId} (${it.qty} units, ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, ${it.weightKg}kg)`
+  ).join(', ');
+  
+  console.log(`\n❌ PARTIAL ALLOCATION: ${remainingSummary} remaining`);
+  
   const { totalTruckingChargesInUSD, allocationsStatus } = await processFinalAllocations({
     allocationsInstances,
-    remainingPkgs: [],
+    remainingPkgs: remainingItems,
     client,
     vehicles
   });
@@ -454,11 +506,68 @@ async function allocateTrucksAndPrice({
   if (allocationsStatus) return allocationsStatus;
 
   return {
-    status: "success",
-    message: `All packages allocated realistically in ${aggregated.length} trucks`,
-    allocations: aggregated,
+    status: "partial-success",
+    message: `Partially allocated. ${totalAllocated}/${items.reduce((total, item) => total + item.qty, 0)} items in ${optimizedAllocations.length} trucks. ${remainingItems.length} items remaining.`,
+    allocations: allocationsInstances.map(inst => ({
+      truckId: inst.truckId,
+      truckName: inst.truckName,
+      items: inst.items.map(it => ({ pkgId: it.pkgId, qty: it.qty })),
+      totalItems: inst.items.reduce((sum, item) => sum + item.qty, 0),
+      usedCBM: Number(inst.usedCBM.toFixed(6)),
+      usedWeightKg: inst.usedWeight,
+      capacityCBM: inst.truckObj.cbmCapacity,
+      capacityWeight: inst.truckObj.maxWeightKg,
+      cbmUtilization: `${((inst.usedCBM / inst.truckObj.cbmCapacity) * 100).toFixed(1)}%`,
+      weightUtilization: `${((inst.usedWeight / inst.truckObj.maxWeightKg) * 100).toFixed(1)}%`
+    })),
+    remainingItems: remainingItems,
+    totalAllocated: totalAllocated,
+    totalRequired: items.reduce((total, item) => total + item.qty, 0),
     totalTruckingChargesInUSD: totalTruckingChargesInUSD || 0
   };
+}
+
+// SUCCESS CASE: All items allocated
+console.log("\n" + "=".repeat(50));
+console.log("🎯 FINAL REALISTIC ALLOCATION - SUCCESS");
+console.log("=".repeat(50));
+
+const aggregated = allocationsInstances.map(inst => ({
+  truckId: inst.truckId,
+  truckName: inst.truckName,
+  items: inst.items.map(it => ({ pkgId: it.pkgId, qty: it.qty })),
+  totalItems: inst.items.reduce((sum, item) => sum + item.qty, 0),
+  usedCBM: Number(inst.usedCBM.toFixed(6)),
+  usedWeightKg: inst.usedWeight,
+  capacityCBM: inst.truckObj.cbmCapacity,
+  capacityWeight: inst.truckObj.maxWeightKg,
+  cbmUtilization: `${((inst.usedCBM / inst.truckObj.cbmCapacity) * 100).toFixed(1)}%`,
+  weightUtilization: `${((inst.usedWeight / inst.truckObj.maxWeightKg) * 100).toFixed(1)}%`
+}));
+
+aggregated.forEach(alloc => {
+  console.log(`\n🚛 ${alloc.truckName}:`);
+  console.log(`   📦 ${alloc.items.map(it => `${it.pkgId}×${it.qty}`).join(', ')}`);
+  console.log(`   📊 ${alloc.usedCBM}CBM / ${alloc.capacityCBM}CBM (${alloc.cbmUtilization})`);
+  console.log(`   ⚖️  ${alloc.usedWeightKg}kg / ${alloc.capacityWeight}kg (${alloc.weightUtilization})`);
+});
+
+// ✅ Call finalization helper with CLEAN parameters
+const { totalTruckingChargesInUSD, allocationsStatus } = await processFinalAllocations({
+  allocationsInstances,
+  remainingPkgs: [],
+  client,
+  vehicles
+});
+
+if (allocationsStatus) return allocationsStatus;
+
+return {
+  status: "success",
+  message: `All packages allocated realistically in ${aggregated.length} trucks`,
+  allocations: aggregated,
+  totalTruckingChargesInUSD: totalTruckingChargesInUSD || 0
+};
 }
 
 module.exports = { allocateTrucksAndPrice };

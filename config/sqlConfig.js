@@ -7,11 +7,14 @@ const sqlCfg = {
   server: process.env.SQLSERVER_SERVER,
   port: Number(process.env.SQLSERVER_PORT) || 1433,
   database: process.env.SQLSERVER_DATABASE,
-  options: { 
-    trustServerCertificate: true,
-    encrypt: false // Add this for external servers
+  connectionTimeout: 60000,
+  requestTimeout: 60000,
+  options: {
+    encrypt: true,
+    enableArithAbort: true,
+    trustServerCertificate: true
   },
-  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
+  pool: { max: 20, min: 5, idleTimeoutMillis: 60000,  acquireTimeoutMillis: 60000 },
 };
 
 const pool = new sql.ConnectionPool(sqlCfg);

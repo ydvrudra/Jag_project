@@ -111,49 +111,59 @@ async function loadHeaderAndPackages(client, recordId, bodyPackages, calculation
 
 
 // --- 2) Load ONLY necessary vehicle data ---
+
+let vehicleCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// loadVehiclesAndCapacities function update karein
 async function loadVehiclesAndCapacities(client) {
-  const vehRs = await client.request().query(`
-    SELECT 
-      VehicleTypeMasterId AS truckId, 
-      VehicleName AS truckName,
-      Length AS lengthFt, 
-      Width AS widthFt, 
-      Height AS heightFt,
-      ISNULL(CBMCapacity, 0) AS cbmCapacity,
-      VehicleCapacityId
-    FROM VehicleTypeMaster
-    -- WHERE IsActive = 1  ✅ REMOVE THIS LINE
-    ORDER BY CBMCapacity ASC
-  `);
-
-  const vehiclesRaw = vehRs.recordset || [];
-
-  // ✅ Load capacities
-  const capRs = await client.request().query(`
-    SELECT CapcityMasterId, CapacityInKg 
-    FROM CapcityMaster
-  `);
-  
-  const caps = {};
-  for (const c of capRs.recordset || []) {
-    caps[c.CapcityMasterId] = Number(c.CapacityInKg || 0);
+  // ✅ RETURN CACHED DATA IF AVAILABLE
+  if (vehicleCache && (Date.now() - cacheTimestamp) < CACHE_DURATION) {
+    console.log("✅ Using cached vehicle data");
+    return vehicleCache;
   }
 
-  // ✅ Usable dimensions (with clearance)
+  // ✅ SINGLE QUERY with JOIN
+  const query = `
+    SELECT 
+      v.VehicleTypeMasterId AS truckId, 
+      v.VehicleName AS truckName,
+      v.Length AS lengthFt, 
+      v.Width AS widthFt, 
+      v.Height AS heightFt,
+      ISNULL(v.CBMCapacity, 0) AS cbmCapacity,
+      c.CapacityInKg AS maxWeightKg
+    FROM VehicleTypeMaster v
+    LEFT JOIN CapcityMaster c ON v.VehicleCapacityId = c.CapcityMasterId
+    ORDER BY v.CBMCapacity ASC
+  `;
+
+  const result = await client.request().query(query);
+  const vehiclesRaw = result.recordset || [];
+
+  // ✅ Usable dimensions
   const CLEAR_L = 0.25, CLEAR_W = 0.25, CLEAR_H = 0.25;
 
-  return vehiclesRaw.map(v => ({
+  const vehicles = vehiclesRaw.map(v => ({
     truckId: v.truckId,
     truckName: v.truckName,
     lengthFt: Number(v.lengthFt || 0),
     widthFt: Number(v.widthFt || 0), 
     heightFt: Number(v.heightFt || 0),
     cbmCapacity: Number(v.cbmCapacity || 0),
-    maxWeightKg: caps[v.VehicleCapacityId] || 0,
+    maxWeightKg: Number(v.maxWeightKg || 0),
     usableLengthFt: Math.max(0, Number(v.lengthFt) - CLEAR_L),
     usableWidthFt: Math.max(0, Number(v.widthFt) - CLEAR_W),
     usableHeightFt: Math.max(0, Number(v.heightFt) - CLEAR_H)
   }));
+
+  // ✅ STORE IN CACHE
+  vehicleCache = vehicles;
+  cacheTimestamp = Date.now();
+  console.log("✅ Vehicle data cached");
+
+  return vehicles;
 }
 
 module.exports = { loadHeaderAndPackages, loadVehiclesAndCapacities };
