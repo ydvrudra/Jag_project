@@ -31,9 +31,9 @@ async function allocateTrucksAndPrice({
     return copy;
   }).sort((a, b) => a.cbmCapacity - b.cbmCapacity);
 
- // console.log("\n=== Available Trucks (Smallest to Largest) ===");
+  console.log("\n=== Available Trucks (Smallest to Largest) ===");
   vehicles.forEach(v => {
-   // console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
+    console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
   });
 
   // ✅ Prepare packages (SAME LOGIC)
@@ -59,8 +59,6 @@ async function allocateTrucksAndPrice({
   //  console.log(`Pkg: ${it.pkgId}, Size: ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, CBM: ${it.cbm}, Weight: ${it.weightKg}kg, Qty: ${it.qty}, Stackable: ${it.stackable}`);
   });
 
-  const totalCBM = items.reduce((sum, it) => sum + (it.cbm * it.qty), 0);
-  const totalWeight = items.reduce((sum, it) => sum + (it.weightKg * it.qty), 0);
  // console.log(`\n📊 TOTAL REQUIREMENTS: ${totalCBM.toFixed(2)} CBM, ${totalWeight}kg`);
 
   const allocationsInstances = [];
@@ -92,8 +90,26 @@ async function allocateTrucksAndPrice({
     }
   }
 
-  function calculateRealStackableWithMixed(it, truck, existingItems) {
-    // Stackable can only share space with other stackable items
+  // ✅ CORRECTED: Simple and clear stacking rules
+function calculateRealStackableWithMixed(it, truck, existingItems) {
+    console.log(`   📦 STACKABLE ARRANGEMENT: ${it.pkgId} in ${truck.truckName}`);
+    
+    // ❌ STACKABLE CANNOT be placed on NON-STACKABLE
+    const existingNonStackable = existingItems.filter(item => !item.stackable);
+    
+    // Calculate available floor space (excluding non-stackable area)
+    let availableFloorWidth = truck.usableWidthFt;
+    for (const nonStackItem of existingNonStackable) {
+        const itemWidth = Math.min(nonStackItem.lengthFt, nonStackItem.widthFt);
+        availableFloorWidth -= itemWidth;
+    }
+    
+    if (availableFloorWidth <= 0) {
+        console.log(`   ❌ No floor space available for stackable`);
+        return 0;
+    }
+
+    // Stackable can be on FLOOR or on top of OTHER STACKABLE
     const maxLayers = Math.floor(truck.usableHeightFt / it.heightFt);
     if (maxLayers === 0) return 0;
 
@@ -103,103 +119,66 @@ async function allocateTrucksAndPrice({
         [it.widthFt, it.lengthFt]
     ];
 
-    // Calculate available floor space considering existing non-stackable items
-    let availableLength = truck.usableLengthFt;
-    let availableWidth = truck.usableWidthFt;
-    
-    const existingNonStackable = existingItems.filter(item => !item.stackable);
-    if (existingNonStackable.length > 0) {
-        // Non-stackable items take up floor space
-        const maxNonStackableWidth = Math.max(...existingNonStackable.map(item => 
-            Math.min(item.lengthFt, item.widthFt)
-        ));
-        availableWidth = Math.max(0, truck.usableWidthFt - maxNonStackableWidth);
-    }
-
     for (const [pkgL, pkgW] of rotations) {
-        if (pkgL <= availableLength && pkgW <= availableWidth) {
-            const unitsInLength = Math.floor(availableLength / pkgL);
-            const unitsInWidth = Math.floor(availableWidth / pkgW);
-            maxUnitsPerLayer = Math.max(maxUnitsPerLayer, unitsInLength * unitsInWidth);
-        }
-    }
-
-    // Also check full truck dimensions if no non-stackable items
-    if (existingNonStackable.length === 0) {
-        for (const [pkgL, pkgW] of rotations) {
+        if (pkgL <= truck.usableLengthFt && pkgW <= availableFloorWidth) {
             const unitsInLength = Math.floor(truck.usableLengthFt / pkgL);
-            const unitsInWidth = Math.floor(truck.usableWidthFt / pkgW);
+            const unitsInWidth = Math.floor(availableFloorWidth / pkgW);
             maxUnitsPerLayer = Math.max(maxUnitsPerLayer, unitsInLength * unitsInWidth);
         }
     }
 
     const totalCapacity = maxUnitsPerLayer * maxLayers;
     
-    // Only stackable items share the same vertical space
     const existingStackableCount = existingItems
         .filter(item => item.stackable)
         .reduce((sum, item) => sum + item.qty, 0);
 
     const available = Math.max(0, totalCapacity - existingStackableCount);
     
-    //console.log(`   STACKABLE: ${maxUnitsPerLayer} units/layer × ${maxLayers} layers = ${totalCapacity} total`);
-    //console.log(`   Existing Stackable: ${existingStackableCount}, Available: ${available}`);
-    
+    console.log(`   STACKABLE: ${maxUnitsPerLayer} units/layer × ${maxLayers} layers = ${available} available`);
     return available;
-  }
+}
 
-  function calculateRealNonStackableWithMixed(it, truck, existingItems) {
-    // Non-stackable need dedicated floor space, cannot share with other non-stackable
+function calculateRealNonStackableWithMixed(it, truck, existingItems) {
+    console.log(`   📦 NON-STACKABLE ARRANGEMENT: ${it.pkgId} in ${truck.truckName}`);
+    
+    // ✅ CORRECTED: NON-STACKABLE can ONLY be on FLOOR, NOT on stackable
     let maxUnits = 0;
     const rotations = [
         [it.lengthFt, it.widthFt],
         [it.widthFt, it.lengthFt]
     ];
 
-    // Count existing non-stackable items
-    const existingNonStackableCount = existingItems
-        .filter(item => !item.stackable)
-        .reduce((sum, item) => sum + item.qty, 0);
-
-    // Calculate available space considering existing stackable items
-    let availableLength = truck.usableLengthFt;
-    let availableWidth = truck.usableWidthFt;
+    // Calculate available floor space (excluding space used by existing items)
+    let availableFloorWidth = truck.usableWidthFt;
     
-    const existingStackable = existingItems.filter(item => item.stackable);
-    if (existingStackable.length > 0) {
-        // Stackable items typically use one side, leaving space for non-stackable
-        const maxStackableWidth = Math.max(...existingStackable.map(item => 
-            Math.min(item.lengthFt, item.widthFt)
-        ));
-        availableWidth = Math.max(0, truck.usableWidthFt - maxStackableWidth);
+    // Subtract space used by existing non-stackable items
+    const existingNonStackable = existingItems.filter(item => !item.stackable);
+    for (const nonStackItem of existingNonStackable) {
+        const itemWidth = Math.min(nonStackItem.lengthFt, nonStackItem.widthFt);
+        availableFloorWidth -= itemWidth;
     }
+    
+    // Also subtract space used by existing stackable items (they use floor space too)
+    const existingStackable = existingItems.filter(item => item.stackable);
+    for (const stackItem of existingStackable) {
+        const itemWidth = Math.min(stackItem.lengthFt, stackItem.widthFt);
+        availableFloorWidth -= itemWidth;
+    }
+
+    console.log(`   📊 Available floor width for non-stackable: ${availableFloorWidth}ft`);
 
     for (const [pkgL, pkgW] of rotations) {
-        if (pkgL <= availableLength && pkgW <= availableWidth) {
-            const unitsInLength = Math.floor(availableLength / pkgL);
-            const unitsInWidth = Math.floor(availableWidth / pkgW);
-            const totalPossible = unitsInLength * unitsInWidth;
-            
-            const available = Math.max(0, totalPossible - existingNonStackableCount);
-            maxUnits = Math.max(maxUnits, available);
-        }
-    }
-
-    // Also check full truck dimensions if no stackable items
-    if (existingStackable.length === 0) {
-        for (const [pkgL, pkgW] of rotations) {
+        if (pkgL <= truck.usableLengthFt && pkgW <= availableFloorWidth) {
             const unitsInLength = Math.floor(truck.usableLengthFt / pkgL);
-            const unitsInWidth = Math.floor(truck.usableWidthFt / pkgW);
-            const totalPossible = unitsInLength * unitsInWidth;
-            
-            const available = Math.max(0, totalPossible - existingNonStackableCount);
-            maxUnits = Math.max(maxUnits, available);
+            const unitsInWidth = Math.floor(availableFloorWidth / pkgW);
+            maxUnits = Math.max(maxUnits, unitsInLength * unitsInWidth);
         }
     }
 
- // console.log(`   NON-STACKABLE: Max ${maxUnits} units (dedicated floor space)`);
+    console.log(`   NON-STACKABLE: Max ${maxUnits} units (ONLY on floor)`);
     return maxUnits;
-  }
+}
 
   // ✅ REALISTIC: Maximum units calculation (SAME LOGIC)
   function maxFitUnits(it, inst, remainingQty) {
@@ -329,10 +308,6 @@ async function allocateTrucksAndPrice({
     if (stackableItems.length === 0 || nonStackableItems.length === 0) {
         return true; // Only one type of items, always feasible
     }
-
-    // Check if mixed arrangement is physically possible
-    const totalStackable = stackableItems.reduce((sum, item) => sum + item.qty, 0);
-    const totalNonStackable = nonStackableItems.reduce((sum, item) => sum + item.qty, 0);
     
     // Simple check: if both types exist, they should be able to share the truck
     const stackableVolume = stackableItems.reduce((sum, item) => sum + (item.cbm * item.qty), 0);
@@ -347,10 +322,144 @@ console.log("\n🚛 STARTING REALISTIC ALLOCATION...");
 let remainingItems = items.map(it => ({ ...it }));
 const optimizedAllocations = [];
 
-// Sort by difficulty (non-stackable first, then by size)
+function tryMixedAllocationInExistingTrucks() {
+  console.log(`\n🔄 TRYING MIXED ALLOCATION IN EXISTING TRUCKS...`);
+  
+  for (const inst of optimizedAllocations) {
+    const truck = inst.truckObj;
+    
+    // Check if we can add BOTH remaining items in this truck
+    const remainingNonZero = remainingItems.filter(item => item.qty > 0);
+    if (remainingNonZero.length === 0) break;
+    
+    console.log(`   🔍 Checking ${truck.truckName} for mixed packages...`);
+    
+    let canFitMixed = true;
+    let tempInstance = {
+      truckObj: truck,
+      usedCBM: inst.usedCBM,
+      usedWeight: inst.usedWeight,
+      items: [...inst.items] // Copy existing items
+    };
+    
+    // ✅ NEW: Check if any stackable is trying to go on top of non-stackable
+    const existingNonStackable = inst.items.filter(item => !item.stackable);
+    const remainingStackable = remainingNonZero.filter(item => item.stackable);
+    
+    // ❌ If there are existing non-stackable AND remaining stackable, 
+    // we need to check if stackable can be placed without going on non-stackable
+    if (existingNonStackable.length > 0 && remainingStackable.length > 0) {
+      console.log(`   ⚠️  Checking stackable placement on non-stackable...`);
+      
+      for (const stackItem of remainingStackable) {
+        // Check if stackable can be placed without using non-stackable space
+        const canPlaceOnFloorOrStackable = calculateStackableWithoutNonStackable(stackItem, tempInstance, truck);
+        if (canPlaceOnFloorOrStackable === 0) {
+          console.log(`   ❌ Stackable ${stackItem.pkgId} cannot be placed without using non-stackable space`);
+          canFitMixed = false;
+          break;
+        }
+      }
+    }
+    
+    if (!canFitMixed) continue;
+    
+    // Try to place all remaining items
+    for (const item of remainingNonZero) {
+      const canPlace = maxFitUnits(item, tempInstance, item.qty);
+      console.log(`      ${item.pkgId}: can place ${canPlace} units`);
+      if (canPlace === 0) {
+        canFitMixed = false;
+        break;
+      }
+    }
+    
+    if (canFitMixed) {
+      console.log(`   🎯 MIXED ALLOCATION SUCCESS: Adding remaining items to ${truck.truckName}`);
+      // Actually place all remaining items
+      for (const item of remainingNonZero) {
+        const canPlace = maxFitUnits(item, inst, item.qty);
+        if (canPlace > 0) {
+          placeUnits(item, inst, canPlace);
+          item.qty -= canPlace;
+          console.log(`      ✅ Placed ${canPlace} ${item.pkgId} in ${truck.truckName}`);
+        }
+      }
+      return true;
+    }
+  }
+  
+  console.log(`   ❌ No mixed allocation possible in existing trucks`);
+  return false;
+}
+
+function calculateStackableWithoutNonStackable(it, inst, truck) {
+  console.log(`   🔍 Checking stackable ${it.pkgId} without non-stackable conflict...`);
+  
+  const existingNonStackable = inst.items.filter(item => !item.stackable);
+  
+  if (existingNonStackable.length === 0) {
+    return maxFitUnits(it, inst, it.qty); // No non-stackable, normal calculation
+  }
+  
+  // ✅ CORRECTED: Calculate EXACT floor space used by non-stackable
+  let usedFloorWidth = 0;
+  for (const nonStackItem of existingNonStackable) {
+    // Non-stackable floor space use karta hai - width-wise calculate karo
+    const itemFootprint = Math.min(nonStackItem.lengthFt, nonStackItem.widthFt);
+    usedFloorWidth += itemFootprint;
+  }
+  
+  const availableFloorWidth = Math.max(0, truck.usableWidthFt - usedFloorWidth);
+  console.log(`   📊 Floor space: ${usedFloorWidth}ft used, ${availableFloorWidth}ft available`);
+  
+  if (availableFloorWidth <= 0) {
+    console.log(`   ❌ No floor space available for stackable`);
+    return 0;
+  }
+  
+  // ✅ CORRECTED: Stackable can ONLY use remaining floor space (non-stackable ke upar nahi)
+  const maxLayers = Math.floor(truck.usableHeightFt / it.heightFt);
+  if (maxLayers === 0) return 0;
+
+  let maxUnits = 0;
+  const rotations = [
+    [it.lengthFt, it.widthFt],
+    [it.widthFt, it.lengthFt]
+  ];
+
+  for (const [pkgL, pkgW] of rotations) {
+    // Check if stackable can fit in REMAINING floor space
+    if (pkgL <= truck.usableLengthFt && pkgW <= availableFloorWidth) {
+      const unitsInLength = Math.floor(truck.usableLengthFt / pkgL);
+      const unitsInWidth = Math.floor(availableFloorWidth / pkgW);
+      const floorUnits = unitsInLength * unitsInWidth;
+      
+      // Stackable can be stacked on OTHER stackable (but not on non-stackable)
+      const existingStackable = inst.items.filter(item => item.stackable);
+      const existingStackableCount = existingStackable.reduce((sum, item) => sum + item.qty, 0);
+      
+      const totalCapacity = floorUnits * maxLayers;
+      const available = Math.max(0, totalCapacity - existingStackableCount);
+      
+      maxUnits = Math.max(maxUnits, available);
+      console.log(`   📊 Rotation ${pkgL}x${pkgW}ft: ${floorUnits} floor units × ${maxLayers} layers = ${available} available`);
+    }
+  }
+  
+  console.log(`   📊 FINAL Stackable without non-stackable conflict: ${maxUnits} units`);
+  return maxUnits;
+}
+
+// ✅ CORRECT SEQUENCE - Stackable pehle
 remainingItems.sort((a, b) => {
-  if (a.stackable !== b.stackable) return a.stackable ? 1 : -1;
+  if (a.stackable !== b.stackable) return a.stackable ? -1 : 1; // Stackable pehle
   return (b.lengthFt * b.widthFt * b.heightFt) - (a.lengthFt * a.widthFt * a.heightFt);
+});
+
+console.log("\n🔀 SORTED PACKAGES ORDER:");
+remainingItems.forEach((item, index) => {
+  console.log(`   ${index + 1}. ${item.pkgId} - ${item.stackable ? 'STACKABLE' : 'NON-STACKABLE'} - ${item.lengthFt}x${item.widthFt}x${item.heightFt}ft`);
 });
 
 let safetyCounter = 0;
@@ -359,6 +468,16 @@ const MAX_ITERATIONS = vehicles.length * 20;
 while (remainingItems.length > 0 && safetyCounter < MAX_ITERATIONS) {
   safetyCounter++;
   
+  // ✅ FIRST: Try mixed allocation in existing trucks
+  const mixedAllocated = tryMixedAllocationInExistingTrucks();
+  if (mixedAllocated) {
+    // Remove fully allocated items
+    remainingItems = remainingItems.filter(item => item.qty > 0);
+    console.log(`🔄 Mixed allocation done, remaining items: ${remainingItems.length}`);
+    continue;
+  }
+  
+  // Then continue with your existing logic...
   const currentItem = remainingItems[0];
   if (currentItem.qty <= 0) {
     remainingItems.shift();
@@ -366,6 +485,7 @@ while (remainingItems.length > 0 && safetyCounter < MAX_ITERATIONS) {
   }
 
   console.log(`\n=== ALLOCATING ${currentItem.pkgId} (${currentItem.lengthFt}x${currentItem.widthFt}x${currentItem.heightFt}ft, ${currentItem.qty} remaining) ===`);
+
 
   // Try existing trucks first (IMPROVED LOGIC)
   let placedInExisting = false;
