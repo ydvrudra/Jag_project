@@ -12,8 +12,12 @@ async function allocateTrucksAndPrice({
   vehicles,
   persist,
   recordId,
-  userId
+  userId,
+  hdr
 }) {
+
+  const fromLocationId = hdr?.FromPinCodeId || 0;
+  const toLocationId = hdr?.ToLocationRouteId || 0;
 
   if (!pkgs || !pkgs.length) return { status: "no-packages", message: "No packages to allocate", allocations: [] };
 
@@ -499,7 +503,9 @@ async function allocateTrucksAndPrice({
       allocationsInstances,
       remainingPkgs: remainingItems,
       client,
-      vehicles
+      vehicles,
+      fromLocationId,    // ✅ USE EXTRACTED DATA
+      toLocationId 
     });
 
     if (allocationsStatus) {
@@ -579,9 +585,11 @@ async function allocateTrucksAndPrice({
   // ✅ Call finalization helper
   const { totalTruckingChargesInUSD, allocationsStatus } = await processFinalAllocations({
     allocationsInstances,
-    remainingPkgs: [],
+    remainingPkgs: remainingItems,
     client,
-    vehicles
+    vehicles,
+    fromLocationId: hdr.FromPinCodeId,    
+    toLocationId: hdr.ToLocationRouteId   
   });
 
   if (allocationsStatus) {

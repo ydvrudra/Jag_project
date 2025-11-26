@@ -35,6 +35,30 @@ async function suggestTruckForEnquiry(req, res) {
       packageFits3D
     });
 
+    // ✅ ADD DATABASE UPDATE HERE
+    if (recordId && result.status === 'success') {
+      try {
+        const truckIds = result.allocations.map(alloc => alloc.truckId).join(',');
+        
+        const updateQuery = `
+          UPDATE EnquiryGenerationNew 
+          SET VehicleTypeMasterId = @truckIds,
+              SuggestOneVehicle = @suggestionsJson
+          WHERE EnquiryGenerationNewId = @recordId
+        `;
+        
+        await client.request()
+          .input('truckIds', sql.VarChar, truckIds)
+          .input('suggestionsJson', sql.NVarChar, JSON.stringify(result.allocations))
+          .input('recordId', sql.Int, recordId)
+          .query(updateQuery);
+          
+        console.log('✅ Truck IDs saved:', truckIds);
+      } catch (updateError) {
+        console.error('Error saving truck IDs:', updateError);
+      }
+    }
+
     return res.status(200).json(result);
 
   } catch (err) {
