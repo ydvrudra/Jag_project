@@ -35,17 +35,33 @@ async function suggestTruckForEnquiry(req, res) {
       packageFits3D
     });
 
+
+    
+console.log('📊 RESULT STATUS:', result.status);
+console.log('📊 RECORD ID:', recordId);
+console.log('📊 ALLOCATIONS:', result.allocations);
+
+
     // ✅ ADD DATABASE UPDATE HERE
     if (recordId && result.status === 'success') {
-      try {
+      console.log('🔄 UPDATING DATABASE...');
         const truckIds = result.allocations.map(alloc => alloc.truckId).join(',');
-        
+          console.log('🚛 TRUCK IDs TO SAVE:', truckIds);
+
+          try {
         const updateQuery = `
           UPDATE EnquiryGenerationNew 
           SET VehicleTypeMasterId = @truckIds,
               SuggestOneVehicle = @suggestionsJson
           WHERE EnquiryGenerationNewId = @recordId
         `;
+
+        const updateResult = await client.request()
+      .input('truckIds', sql.VarChar, truckIds)
+      .input('recordId', sql.Int, recordId)
+      .query(updateQuery);
+      
+    console.log('✅ DATABASE UPDATE SUCCESS, ROWS AFFECTED:', updateResult.rowsAffected);
         
         await client.request()
           .input('truckIds', sql.VarChar, truckIds)
