@@ -48,7 +48,7 @@ async function processFinalAllocations({
     grouped[inst.truckId].truckCount += 1;
     grouped[inst.truckId].qtyItems += inst.items.reduce((s, it) => s + (it.qty || 0), 0);
     grouped[inst.truckId].usedCBM += Number(inst.usedCBM || 0);  // ✅ FIX: Add usedCBM
-    grouped[inst.truckId].usedWeightKg += Number(inst.usedWeight || 0);
+    grouped[inst.truckId].usedWeightKg = Math.max(grouped[inst.truckId].usedWeightKg, inst.usedWeight);
   }
 
   const finalAllocations = Object.values(grouped);

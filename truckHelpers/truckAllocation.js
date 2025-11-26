@@ -139,7 +139,7 @@ async function allocateTrucksAndPrice({
       lengthFt,
       widthFt,
       heightFt,
-      weightKg: Number(p.weightKg || p.weight || 0), // ✅ DIRECT TOTAL WEIGHT (NO MULTIPLY)
+     weightKg: Number(p.weightKg || p.weight || 0) / Math.max(1, Number(p.qty || 1)), // ✅ DIRECT TOTAL WEIGHT (NO MULTIPLY)
       stackable: p.stackable !== false,
       cbm: cbmVal,
       qty: Number(p.qty || 1)
@@ -280,8 +280,8 @@ async function allocateTrucksAndPrice({
     const maxByCBM = Math.floor(freeCBM / it.cbm);
     
     // Weight constraint
-    const freeWeight = Math.max(0, t.maxWeightKg - inst.usedWeight);
-    const maxByWeight = Math.floor(freeWeight / it.weightKg);
+   const freeWeight = Math.max(0, t.maxWeightKg - inst.usedWeight);
+   const maxByWeight = Math.floor(freeWeight / it.weightKg);
 
     // Physical arrangement constraint
     const maxPhysical = calculateMaxPhysicalUnits(it, inst, t);
@@ -295,7 +295,7 @@ async function allocateTrucksAndPrice({
     if (!qtyToPlace) return;
 
     inst.usedCBM += it.cbm * qtyToPlace;
-    inst.usedWeight += it.weightKg;  
+    inst.usedWeight += it.weightKg * qtyToPlace; 
 
     const existing = inst.items.find(x => x.pkgId === it.pkgId);
     if (existing) {
