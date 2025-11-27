@@ -79,16 +79,17 @@ async function allocateTrucksAndPrice({
       isValid = false;
     }
 
-    // Check weight - DIRECT TOTAL WEIGHT (NO MULTIPLY)
-    if (weightKg > maxTruckWeight) {
-      overweightPackages.push({
-        pkgId: pkg.pkgId,
-        weight: `${weightKg}kg`,
-        maxWeight: `${maxTruckWeight}kg`,
-        note: "Total package weight exceeds truck capacity"
-      });
-      isValid = false;
-    }
+    // // Check weight - DIRECT TOTAL WEIGHT (NO MULTIPLY)
+    // if (weightKg > maxTruckWeight) {
+    //   overweightPackages.push({
+    //     pkgId: pkg.pkgId,
+    //     weight: `${weightKg}kg`,
+    //     maxWeight: `${maxTruckWeight}kg`,
+    //     note: "Total package weight exceeds truck capacity"
+    //   });
+    //   isValid = false;
+    // }
+    
 
     // Add to valid packages if no issues
     if (isValid) {
