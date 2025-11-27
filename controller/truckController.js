@@ -35,33 +35,26 @@ async function suggestTruckForEnquiry(req, res) {
       packageFits3D
     });
 
-
-    
-console.log('📊 RESULT STATUS:', result.status);
-console.log('📊 RECORD ID:', recordId);
-console.log('📊 ALLOCATIONS:', result.allocations);
-
-
-    // ✅ ADD DATABASE UPDATE HERE
+      // ✅ UPDATED: Create repeated truck IDs based on count
     if (recordId && result.status === 'success') {
-      console.log('🔄 UPDATING DATABASE...');
-        const truckIds = result.allocations.map(alloc => alloc.truckId).join(',');
-          console.log('🚛 TRUCK IDs TO SAVE:', truckIds);
-
-          try {
+      try {
+        let repeatedTruckIds = [];
+        
+        result.allocations.forEach(alloc => {
+          // Truck count ke hisaab se repeat karo
+          for (let i = 0; i < alloc.truckCount; i++) {
+            repeatedTruckIds.push(alloc.truckId);
+          }
+        });
+        
+        const truckIds = repeatedTruckIds.join(',');
+        
         const updateQuery = `
           UPDATE EnquiryGenerationNew 
           SET VehicleTypeMasterId = @truckIds,
               SuggestOneVehicle = @suggestionsJson
           WHERE EnquiryGenerationNewId = @recordId
         `;
-
-        const updateResult = await client.request()
-      .input('truckIds', sql.VarChar, truckIds)
-      .input('recordId', sql.Int, recordId)
-      .query(updateQuery);
-      
-    console.log('✅ DATABASE UPDATE SUCCESS, ROWS AFFECTED:', updateResult.rowsAffected);
         
         await client.request()
           .input('truckIds', sql.VarChar, truckIds)
@@ -69,7 +62,7 @@ console.log('📊 ALLOCATIONS:', result.allocations);
           .input('recordId', sql.Int, recordId)
           .query(updateQuery);
           
-        console.log('✅ Truck IDs saved:', truckIds);
+        console.log('✅ Repeated Truck IDs saved:', truckIds);
       } catch (updateError) {
         console.error('Error saving truck IDs:', updateError);
       }
@@ -82,5 +75,4 @@ console.log('📊 ALLOCATIONS:', result.allocations);
     return res.status(500).json({ error: 'Internal error', details: err.message });
   }
 }
-
 module.exports = { suggestTruckForEnquiry };
