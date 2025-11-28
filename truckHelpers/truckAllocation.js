@@ -114,42 +114,23 @@ async function allocateTrucksAndPrice({
 
   console.log("\n✅ All valid packages are within truck capacity limits");
   
-
- // ✅ NORMALIZE PACKAGES WITH CORRECT WEIGHT
-function normalizePackages(pkgs) {
-  const normalized = [];
-  pkgs.forEach(pkg => {
-    const individualWeight = Number(pkg.weightKg || pkg.weight || 0) / Math.max(1, Number(pkg.qty || 1));
-    
-    for (let i = 0; i < Math.max(1, Number(pkg.qty || 1)); i++) {
-      normalized.push({
-        ...pkg,
-        pkgId: pkg.pkgId + '_' + i, // Unique ID for each unit
-        weightKg: individualWeight, // Individual weight
-        qty: 1 // Always 1 for normalized packages
-      });
-    }
+  // ✅ Prepare ONLY VALID packages
+  let items = validPackages.map(p => {
+    const lengthFt = Number(p.lengthFt || p.length || 0);
+    const widthFt = Number(p.widthFt || p.width || 0);
+    const heightFt = Number(p.heightFt || p.height || 0);
+    const cbmVal = (p.cbm && p.cbm > 0) ? Number(p.cbm) : feet3ToCBM(lengthFt, widthFt, heightFt);
+    return {
+      pkgId: p.pkgId,
+      lengthFt,
+      widthFt,
+      heightFt,
+      weightKg: Number(p.weightKg || p.weight || 0) / Math.max(1, Number(p.qty || 1)),
+     stackable: p.stackable !== false,
+      cbm: cbmVal,
+      qty: Number(p.qty || 1)
+    };
   });
-  return normalized;
-}
-
-// ✅ MAPPING MEIN WEIGHT CALCULATION HATA DO
-let items = normalizePackages(validPackages).map(p => {
-  const lengthFt = Number(p.lengthFt || p.length || 0);
-  const widthFt = Number(p.widthFt || p.width || 0);
-  const heightFt = Number(p.heightFt || p.height || 0);
-  const cbmVal = (p.cbm && p.cbm > 0) ? Number(p.cbm) : feet3ToCBM(lengthFt, widthFt, heightFt);
-  return {
-    pkgId: p.pkgId,
-    lengthFt,
-    widthFt,
-    heightFt,
-    weightKg: p.weightKg, // ✅ Direct use - no calculation needed
-    stackable: p.stackable !== false,
-    cbm: cbmVal,
-    qty: 1 // ✅ Always 1 after normalization
-  };
-});
 
   // console.log("\n=== Packages to Allocate ===");
   items.forEach(it => {
