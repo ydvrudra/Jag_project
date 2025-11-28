@@ -60,7 +60,6 @@ async function allocateTrucksAndPrice({
     const lengthFt = Number(pkg.lengthFt || pkg.length || 0);
     const widthFt = Number(pkg.widthFt || pkg.width || 0);
     const heightFt = Number(pkg.heightFt || pkg.height || 0);
-    const weightKg = Number(pkg.weightKg || pkg.weight || 0);
 
     let isValid = true;
 
@@ -90,35 +89,17 @@ async function allocateTrucksAndPrice({
     //   isValid = false;
     // }
     
-
     // Add to valid packages if no issues
     if (isValid) {
       validPackages.push(pkg);
     }
   }
 
-  // ✅ Show warnings but continue with valid packages
-  if (oversizedPackages.length > 0 || overweightPackages.length > 0) {
-    console.log("\n⚠️  PACKAGE VALIDATION WARNINGS:");
-    
-    if (oversizedPackages.length > 0) {
-      console.log("   📦 Oversized Packages (Skipped):");
-      oversizedPackages.forEach(p => console.log(`      ${p.pkgId}: ${p.dimensions} - ${p.issue}`));
-    }
-    
-    if (overweightPackages.length > 0) {
-      console.log("   ⚖️  Overweight Packages (Skipped):");
-      overweightPackages.forEach(p => console.log(`      ${p.pkgId}: ${p.weight} > max ${p.maxWeight}`));
-    }
-
-    console.log(`\n✅ Continuing allocation with ${validPackages.length} valid packages`);
-  }
-
-  // ✅ If no valid packages, return error
+  //  If no valid packages, return error
   if (validPackages.length === 0) {
     return {
       status: "validation-failed",
-      message: "No packages can be allocated due to size or weight constraints",
+      message: "No packages can be allocated due to size constraints",
       oversizedPackages,
       overweightPackages,
       maxTruckDimensions: {
@@ -132,24 +113,43 @@ async function allocateTrucksAndPrice({
   }
 
   console.log("\n✅ All valid packages are within truck capacity limits");
+  
 
-  // ✅ Prepare ONLY VALID packages
-  let items = validPackages.map(p => {
-    const lengthFt = Number(p.lengthFt || p.length || 0);
-    const widthFt = Number(p.widthFt || p.width || 0);
-    const heightFt = Number(p.heightFt || p.height || 0);
-    const cbmVal = (p.cbm && p.cbm > 0) ? Number(p.cbm) : feet3ToCBM(lengthFt, widthFt, heightFt);
-    return {
-      pkgId: p.pkgId,
-      lengthFt,
-      widthFt,
-      heightFt,
-     weightKg: Number(p.weightKg || p.weight || 0) / Math.max(1, Number(p.qty || 1)), // ✅ DIRECT TOTAL WEIGHT (NO MULTIPLY)
-      stackable: p.stackable !== false,
-      cbm: cbmVal,
-      qty: Number(p.qty || 1)
-    };
+ // ✅ NORMALIZE PACKAGES WITH CORRECT WEIGHT
+function normalizePackages(pkgs) {
+  const normalized = [];
+  pkgs.forEach(pkg => {
+    const individualWeight = Number(pkg.weightKg || pkg.weight || 0) / Math.max(1, Number(pkg.qty || 1));
+    
+    for (let i = 0; i < Math.max(1, Number(pkg.qty || 1)); i++) {
+      normalized.push({
+        ...pkg,
+        pkgId: pkg.pkgId + '_' + i, // Unique ID for each unit
+        weightKg: individualWeight, // Individual weight
+        qty: 1 // Always 1 for normalized packages
+      });
+    }
   });
+  return normalized;
+}
+
+// ✅ MAPPING MEIN WEIGHT CALCULATION HATA DO
+let items = normalizePackages(validPackages).map(p => {
+  const lengthFt = Number(p.lengthFt || p.length || 0);
+  const widthFt = Number(p.widthFt || p.width || 0);
+  const heightFt = Number(p.heightFt || p.height || 0);
+  const cbmVal = (p.cbm && p.cbm > 0) ? Number(p.cbm) : feet3ToCBM(lengthFt, widthFt, heightFt);
+  return {
+    pkgId: p.pkgId,
+    lengthFt,
+    widthFt,
+    heightFt,
+    weightKg: p.weightKg, // ✅ Direct use - no calculation needed
+    stackable: p.stackable !== false,
+    cbm: cbmVal,
+    qty: 1 // ✅ Always 1 after normalization
+  };
+});
 
   // console.log("\n=== Packages to Allocate ===");
   items.forEach(it => {
@@ -172,7 +172,7 @@ async function allocateTrucksAndPrice({
     );
   }
 
-  // ✅ COMPLETELY REWRITTEN: REALISTIC MIXED ARRANGEMENT CALCULATION
+  //  COMPLETELY REWRITTEN: REALISTIC MIXED ARRANGEMENT CALCULATION
   function calculateMaxPhysicalUnits(it, inst, truck) {
     const existingItems = inst.items;
     
@@ -186,7 +186,7 @@ async function allocateTrucksAndPrice({
   function calculateRealStackableWithMixed(it, truck, existingItems) {
     console.log(`   📦 STACKABLE ARRANGEMENT: ${it.pkgId} in ${truck.truckName}`);
     
-    // ❌ STACKABLE CANNOT be placed on NON-STACKABLE
+    //  STACKABLE CANNOT be placed on NON-STACKABLE
     const existingNonStackable = existingItems.filter(item => !item.stackable);
     
     // Calculate available floor space (excluding non-stackable area)
@@ -300,7 +300,7 @@ async function allocateTrucksAndPrice({
     if (!qtyToPlace) return;
 
     inst.usedCBM += it.cbm * qtyToPlace;
-    inst.usedWeight += it.weightKg * qtyToPlace; 
+   inst.usedWeight += it.weightKg * qtyToPlace;
 
     const existing = inst.items.find(x => x.pkgId === it.pkgId);
     if (existing) {
@@ -359,7 +359,7 @@ async function allocateTrucksAndPrice({
       }
     }
     
-    console.log(`   ❌ No mixed allocation possible in existing trucks`);
+    console.log(` No mixed allocation possible in existing trucks`);
     return false;
   }
 
@@ -384,7 +384,7 @@ async function allocateTrucksAndPrice({
     const mixedAllocated = tryMixedAllocationInExistingTrucks();
     if (mixedAllocated) {
       remainingItems = remainingItems.filter(item => item.qty > 0);
-      console.log(`🔄 Mixed allocation done, remaining items: ${remainingItems.length}`);
+      console.log(` Mixed allocation done, remaining items: ${remainingItems.length}`);
       continue;
     }
     
@@ -479,7 +479,7 @@ async function allocateTrucksAndPrice({
     }
     
     if (safetyCounter >= MAX_ITERATIONS) {
-      console.log("🛑 SAFETY BREAK: Maximum iterations reached");
+      console.log("SAFETY BREAK: Maximum iterations reached");
       break;
     }
   }
@@ -552,7 +552,7 @@ async function allocateTrucksAndPrice({
       };
       
       const skippedCount = oversizedPackages.length + overweightPackages.length;
-      partialResponse.message += ` ${skippedCount} packages skipped due to size/weight constraints.`;
+      partialResponse.message += ` ${skippedCount} packages skipped due to size constraints.`;
     }
 
     return partialResponse;
@@ -605,7 +605,7 @@ async function allocateTrucksAndPrice({
       
       const skippedCount = oversizedPackages.length + overweightPackages.length;
       if (finalResult.message) {
-        finalResult.message += ` ${skippedCount} packages skipped due to size/weight constraints.`;
+        finalResult.message += ` ${skippedCount} packages skipped due to size constraints.`;
       }
     }
     
@@ -628,7 +628,7 @@ async function allocateTrucksAndPrice({
     };
     
     const skippedCount = oversizedPackages.length + overweightPackages.length;
-    finalResponse.message = `${aggregated.length} trucks allocated. ${skippedCount} packages skipped due to size/weight constraints.`;
+    finalResponse.message = `${aggregated.length} trucks allocated. ${skippedCount} packages skipped due to size constraints.`;
     
     console.log(`\n📋 SKIPPED PACKAGES SUMMARY:`);
     if (oversizedPackages.length > 0) {
