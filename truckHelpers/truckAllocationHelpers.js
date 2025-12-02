@@ -24,8 +24,8 @@ async function processFinalAllocations({
         truckId: inst.truckId,
         truckName: inst.truckName,
         qtyItems: inst.items.reduce((s, it) => s + (it.qty || 0), 0),
-        usedCBM: Number(inst.usedCBM || 0),  // ✅ FIX: Ensure number
-        usedWeightKg: Number(inst.usedWeight || 0)  // ✅ FIX: Ensure number
+        usedCBM: Number(inst.usedCBM || 0),  
+        usedWeightKg: Number(inst.usedWeight || 0) 
       })),
       remainingCount: finalRemaining
     };
@@ -53,29 +53,6 @@ async function processFinalAllocations({
 
   const finalAllocations = Object.values(grouped);
 
-  // ✅ Simple pricing calculation
-  const suggestions = [];
-  let totalTruckingChargesInUSD = 0;
-
-  for (const alloc of finalAllocations) {
-    const baseCharge = 100;
-    const totalForThisTypeUSD = baseCharge * (alloc.truckCount || 1);
-
-    suggestions.push({
-      truckId: alloc.truckId,
-      truckName: alloc.truckName,
-      truckCount: alloc.truckCount,
-      qtyItems: alloc.qtyItems,
-      usedCBM: Number(alloc.usedCBM || 0),  // ✅ FIX: Ensure number
-      usedWeightKg: Number(alloc.usedWeightKg || 0),  // ✅ FIX: Ensure number
-      chargePerTruck: baseCharge,
-      chargePerTruckUSD: baseCharge,
-      totalChargeUSD: totalForThisTypeUSD
-    });
-
-    totalTruckingChargesInUSD += totalForThisTypeUSD;
-  }
-
   // ✅ Final validation
   for (const inst of allocationsInstances) {
     const truckInfo = vehicles.find(v => v.truckId === inst.truckId);
@@ -95,11 +72,9 @@ async function processFinalAllocations({
     status: 'success',
     message: 'All packages allocated',
     allocations: finalAllocations,
-    suggestions,
-    totalTruckingChargesInUSD
   };
 
-  return { totalTruckingChargesInUSD, allocationsStatus };
+  return {  allocationsStatus };
 }
 
 module.exports = { processFinalAllocations };
