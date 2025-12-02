@@ -70,22 +70,40 @@ class Simple3DSpace {
     { length: pkg.widthFt, width: pkg.lengthFt }
   ];
 
-  // ✅ FIX 1: First try FLOOR positions
-  for (const rot of rotations) {
-    for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += 0.5) {
-      for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += 0.5) {
-        if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
-          return { x, y, z: 0, ...rot, height: pkg.heightFt };
+  // ✅ IMPROVEMENT 1: Try MORE AGGRESSIVE floor positions (better grid search)
+  // First try with 1ft step (faster), then 0.5ft (more precise)
+  const stepSizes = [1, 0.5];
+  
+  for (const stepSize of stepSizes) {
+    for (const rot of rotations) {
+      // Try length-wise arrangement first (optimize for long packages)
+      for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += stepSize) {
+        for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += stepSize) {
+          if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
+            return { x, y, z: 0, ...rot, height: pkg.heightFt };
+          }
+        }
+      }
+      
+      // Also try width-wise arrangement (for better space utilization)
+      if (rot.length !== rot.width) { // Skip if square
+        const swappedRot = { length: rot.width, width: rot.length };
+        for (let x = 0; x <= this.truck.usableLengthFt - swappedRot.length; x += stepSize) {
+          for (let y = 0; y <= this.truck.usableWidthFt - swappedRot.width; y += stepSize) {
+            if (this.canPlace(x, y, 0, swappedRot.length, swappedRot.width, pkg.heightFt)) {
+              return { x, y, z: 0, ...swappedRot, height: pkg.heightFt };
+            }
+          }
         }
       }
     }
   }
 
-  // ✅ FIX 2: If STACKABLE, try on top of other STACKABLES (same column)
+  // ✅ IMPROVEMENT 2: Better stacking logic for STACKABLE items
   if (pkg.stackable) {
     const stackables = this.placedBoxes.filter(b => b.pkg.stackable);
     
-    // Group by column (x,y position)
+    // Strategy 1: Try stacking in existing columns (maximize height utilization)
     const columns = {};
     for (const box of stackables) {
       const key = `${box.x},${box.y}`;
@@ -93,8 +111,14 @@ class Simple3DSpace {
       columns[key].push(box);
     }
     
-    // Try each column
-    for (const [key, columnBoxes] of Object.entries(columns)) {
+    // Sort columns by current height (lower height first for better balance)
+    const sortedColumns = Object.entries(columns).sort(([, colA], [, colB]) => {
+      const heightA = colA.reduce((max, box) => Math.max(max, box.z + box.height), 0);
+      const heightB = colB.reduce((max, box) => Math.max(max, box.z + box.height), 0);
+      return heightA - heightB;
+    });
+    
+    for (const [key, columnBoxes] of sortedColumns) {
       const [baseX, baseY] = key.split(',').map(Number);
       
       // Find top of this column
@@ -105,13 +129,12 @@ class Simple3DSpace {
       
       const topZ = topBox.z + topBox.height;
       
-      // Check height limit (max 3 layers for 2ft boxes in 7.75ft truck)
+      // Check height limit with some buffer
       const maxLayers = Math.floor(this.truck.usableHeightFt / pkg.heightFt);
       const currentLayers = columnBoxes.length;
       
       if (currentLayers < maxLayers) {
         for (const rot of rotations) {
-          // ✅ NON-STACKABLE CAN BE ON STACKABLE ONLY IF FITS EXACTLY
           if (rot.length <= topBox.length && rot.width <= topBox.width) {
             if (this.canPlace(baseX, baseY, topZ, rot.length, rot.width, pkg.heightFt)) {
               return { x: baseX, y: baseY, z: topZ, ...rot, height: pkg.heightFt };
@@ -120,22 +143,24 @@ class Simple3DSpace {
         }
       }
     }
-  }
-
-  // ✅ FIX 3: If NON-STACKABLE, try on top of STACKABLE (ONLY if fits exactly)
-  if (!pkg.stackable) {
-    const stackables = this.placedBoxes.filter(b => b.pkg.stackable);
     
-    for (const stackable of stackables) {
+    // Strategy 2: Try on top of ANY stackable box (for mixed sizes)
+    // Sort stackables by available space on top (larger area first)
+    const sortedStackables = [...stackables].sort((a, b) => {
+      const areaA = a.length * a.width;
+      const areaB = b.length * b.width;
+      return areaB - areaA; // Larger area first
+    });
+    
+    for (const stackable of sortedStackables) {
       const topZ = stackable.z + stackable.height;
       
-      // Check if we have height space
       if (topZ + pkg.heightFt > this.truck.usableHeightFt) continue;
       
       for (const rot of rotations) {
-        // ✅ NON-STACKABLE MUST FIT EXACTLY ON STACKABLE (not anywhere above)
         if (rot.length <= stackable.length && rot.width <= stackable.width) {
-          if (this.canPlace(stackable.x, stackable.y, topZ, rot.length, rot.width, pkg.heightFt)) {
+          if (this.canPlace(stackable.x, stackable.y, topZ, 
+                           rot.length, rot.width, pkg.heightFt)) {
             return { 
               x: stackable.x, 
               y: stackable.y, 
@@ -143,6 +168,186 @@ class Simple3DSpace {
               ...rot, 
               height: pkg.heightFt 
             };
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Try filling gaps between stackables (lateral arrangement)
+    for (const stackable of stackables) {
+      for (const rot of rotations) {
+        // Try right side with gap filling logic
+        const rightX = stackable.x + stackable.length;
+        if (rightX + rot.length <= this.truck.usableLengthFt) {
+          // Check if there's empty space to the right
+          let hasObstruction = false;
+          for (const box of this.placedBoxes) {
+            if (box !== stackable && 
+                box.x >= rightX && 
+                box.x < rightX + rot.length &&
+                box.y >= stackable.y && 
+                box.y < stackable.y + rot.width) {
+              hasObstruction = true;
+              break;
+            }
+          }
+          
+          if (!hasObstruction && this.canPlace(rightX, stackable.y, stackable.z, 
+                                              rot.length, rot.width, pkg.heightFt)) {
+            return { 
+              x: rightX, 
+              y: stackable.y, 
+              z: stackable.z, 
+              ...rot, 
+              height: pkg.heightFt 
+            };
+          }
+        }
+        
+        // Try front side with gap filling
+        const frontY = stackable.y + stackable.width;
+        if (frontY + rot.width <= this.truck.usableWidthFt) {
+          if (this.canPlace(stackable.x, frontY, stackable.z, 
+                           rot.length, rot.width, pkg.heightFt)) {
+            return { 
+              x: stackable.x, 
+              y: frontY, 
+              z: stackable.z, 
+              ...rot, 
+              height: pkg.heightFt 
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // ✅ IMPROVEMENT 3: Enhanced logic for NON-STACKABLE items
+  if (!pkg.stackable) {
+    const stackables = this.placedBoxes.filter(b => b.pkg.stackable);
+    
+    // Priority 1: On top of stackables (exact fit)
+    for (const stackable of stackables) {
+      const topZ = stackable.z + stackable.height;
+      
+      if (topZ + pkg.heightFt > this.truck.usableHeightFt) continue;
+      
+      for (const rot of rotations) {
+        if (rot.length <= stackable.length && rot.width <= stackable.width) {
+          if (this.canPlace(stackable.x, stackable.y, topZ, 
+                           rot.length, rot.width, pkg.heightFt)) {
+            return { 
+              x: stackable.x, 
+              y: stackable.y, 
+              z: topZ, 
+              ...rot, 
+              height: pkg.heightFt 
+            };
+          }
+        }
+      }
+    }
+    
+    // Priority 2: Next to stackables (same level) - with better gap detection
+    const placedPositions = this.placedBoxes.map(b => ({ 
+      x: b.x, y: b.y, length: b.length, width: b.width, z: b.z 
+    }));
+    
+    // Sort by position to find gaps systematically
+    placedPositions.sort((a, b) => {
+      if (a.x !== b.x) return a.x - b.x;
+      return a.y - b.y;
+    });
+    
+    // Try to fill gaps in X direction
+    for (let i = 0; i < placedPositions.length; i++) {
+      const box = placedPositions[i];
+      for (const rot of rotations) {
+        // Try right side
+        const rightX = box.x + box.length;
+        if (rightX + rot.length <= this.truck.usableLengthFt) {
+          // Check if this space is empty
+          let canFit = true;
+          for (const otherBox of this.placedBoxes) {
+            if (this.boxesOverlap(rightX, box.y, box.z, 
+                                 rot.length, rot.width, pkg.heightFt,
+                                 otherBox.x, otherBox.y, otherBox.z,
+                                 otherBox.length, otherBox.width, otherBox.height)) {
+              canFit = false;
+              break;
+            }
+          }
+          
+          if (canFit && this.canPlace(rightX, box.y, box.z, 
+                                     rot.length, rot.width, pkg.heightFt)) {
+            return { 
+              x: rightX, 
+              y: box.y, 
+              z: box.z, 
+              ...rot, 
+              height: pkg.heightFt 
+            };
+          }
+        }
+        
+        // Try below (in Y direction)
+        const belowY = box.y + box.width;
+        if (belowY + rot.width <= this.truck.usableWidthFt) {
+          if (this.canPlace(box.x, belowY, box.z, 
+                           rot.length, rot.width, pkg.heightFt)) {
+            return { 
+              x: box.x, 
+              y: belowY, 
+              z: box.z, 
+              ...rot, 
+              height: pkg.heightFt 
+            };
+          }
+        }
+      }
+    }
+    
+    // Priority 3: Any empty floor space (re-check with optimized search)
+    for (const rot of rotations) {
+      for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += 1) {
+        for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += 1) {
+          if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
+            return { x, y, z: 0, ...rot, height: pkg.heightFt };
+          }
+        }
+      }
+    }
+  }
+
+  // ✅ IMPROVEMENT 4: Final attempt - try different Z levels for stacking
+  // This helps when floor is full but vertical space available
+  if (pkg.stackable) {
+    // Try to create new columns near existing ones
+    const existingColumns = new Set();
+    for (const box of this.placedBoxes) {
+      existingColumns.add(`${Math.floor(box.x)},${Math.floor(box.y)}`);
+    }
+    
+    // Try creating new columns near existing ones
+    for (const column of existingColumns) {
+      const [colX, colY] = column.split(',').map(Number);
+      
+      // Try positions around this column
+      const offsets = [-2, -1, 1, 2];
+      for (const dx of offsets) {
+        for (const dy of offsets) {
+          const testX = colX + dx;
+          const testY = colY + dy;
+          
+          if (testX >= 0 && testY >= 0) {
+            for (const rot of rotations) {
+              if (testX + rot.length <= this.truck.usableLengthFt &&
+                  testY + rot.width <= this.truck.usableWidthFt) {
+                if (this.canPlace(testX, testY, 0, rot.length, rot.width, pkg.heightFt)) {
+                  return { x: testX, y: testY, z: 0, ...rot, height: pkg.heightFt };
+                }
+              }
+            }
           }
         }
       }
@@ -336,38 +541,21 @@ async function allocateTrucksAndPrice({
            (pkg.widthFt <= truck.usableLengthFt && pkg.lengthFt <= truck.usableWidthFt && pkg.heightFt <= truck.usableHeightFt);
   }
 
- function calculate3DFit(pkg, truck, existingItems = []) {
-  const space = new Simple3DSpace(truck);
-  
-  // ✅ FIX: Only check size mismatch for NON-STACKABLE items
-  if (existingItems.length > 0 && !pkg.stackable) {
-    const existingLengths = existingItems.map(item => 
-      Math.max(item.lengthFt, item.widthFt)
-    );
-    const avgExistingLength = existingLengths.reduce((a, b) => a + b, 0) / existingLengths.length;
-    const pkgLength = Math.max(pkg.lengthFt, pkg.widthFt);
+ function calculate3DFit(pkg, truck, existingItems = [], existingSpace3D = null) {
+  // ✅ USE ACTUAL space3D from truck allocation
+  if (existingSpace3D) {
+    // Clone the space to test
+    const tempSpace = new Simple3DSpace(truck);
+    tempSpace.placedBoxes = [...existingSpace3D.placedBoxes];
+    tempSpace.totalCBM = existingSpace3D.totalCBM;
+    tempSpace.totalWeight = existingSpace3D.totalWeight;
+    tempSpace.itemsList = [...existingSpace3D.itemsList];
     
-    // Only check for non-stackable mixing
-    const sizeRatio = pkgLength / avgExistingLength;
-    if (sizeRatio > 2 || sizeRatio < 0.5) {
-      console.log(`   ⚠️ Size mismatch for non-stackable: ${pkgLength}ft vs ${avgExistingLength.toFixed(1)}ft avg`);
-      return 0;
-    }
+    return tempSpace.calculateMaxFit(pkg, pkg.qty);
   }
   
-  // Place existing items
-  let currentX = 0;
-  for (const item of existingItems) {
-    for (let i = 0; i < item.qty; i++) {
-      const width = Math.min(item.lengthFt, item.widthFt);
-      const length = Math.max(item.lengthFt, item.widthFt);
-      if (currentX + width <= truck.usableWidthFt) {
-        space.placeBox(item, 0, currentX, 0, length, width, item.heightFt);
-        currentX += width;
-      }
-    }
-  }
-  
+  // Fallback: old logic (for backward compatibility)
+  const space = new Simple3DSpace(truck);
   return space.calculateMaxFit(pkg, pkg.qty);
 }
 
@@ -411,16 +599,19 @@ async function allocateTrucksAndPrice({
   let remainingItems = items.map(it => ({ ...it }));
   const allocations = [];
 
-  // Sort: Stackable first, then by volume (largest first)
-  remainingItems.sort((a, b) => {
-    if (a.stackable !== b.stackable) return a.stackable ? -1 : 1;
-    return (b.lengthFt * b.widthFt * b.heightFt) - (a.lengthFt * a.widthFt * a.heightFt);
-  });
-
-  console.log("\n🔀 SORTED PACKAGES:");
-  remainingItems.forEach((item, idx) => {
-    console.log(`   ${idx + 1}. ${item.pkgId} - ${item.stackable ? 'STACKABLE' : 'NON-STACKABLE'} - ${item.lengthFt}x${item.widthFt}x${item.heightFt}ft - Qty: ${item.qty}`);
-  });
+  // ✅ MODIFIED: Sort by DIMENSION (largest length first), then stackable
+remainingItems.sort((a, b) => {
+  // First by maximum dimension (largest first)
+  const aMaxDim = Math.max(a.lengthFt, a.widthFt, a.heightFt);
+  const bMaxDim = Math.max(b.lengthFt, b.widthFt, b.heightFt);
+  if (bMaxDim !== aMaxDim) return bMaxDim - aMaxDim;
+  
+  // Then by whether it's non-stackable (non-stackable first)
+  if (a.stackable !== b.stackable) return a.stackable ? 1 : -1;
+  
+  // Then by volume
+  return (b.lengthFt * b.widthFt * b.heightFt) - (a.lengthFt * a.widthFt * a.heightFt);
+});
 
   // Allocate each package type
   for (const currentItem of remainingItems) {
@@ -435,15 +626,16 @@ async function allocateTrucksAndPrice({
       // Check if single unit fits
       if (!canSingleUnitFit(currentItem, alloc.truckObj)) continue;
       
-      // Calculate how many can fit
-      const canFit = calculate3DFit(currentItem, alloc.truckObj, alloc.items);
-      if (canFit > 0) {
-        const toPlace = Math.min(canFit, remainingQty);
-        const placed = placeInTruck(currentItem, alloc, toPlace);
-        remainingQty -= placed;
-        console.log(`   ✅ Placed ${placed} units in existing ${alloc.truckName}`);
-      }
-    }
+     // ✅ PASS THE ACTUAL space3D OBJECT
+  const canFit = calculate3DFit(currentItem, alloc.truckObj, alloc.items, alloc.space3D);
+  
+  if (canFit > 0) {
+    const toPlace = Math.min(canFit, remainingQty);
+    const placed = placeInTruck(currentItem, alloc, toPlace);
+    remainingQty -= placed;
+    console.log(`   ✅ Placed ${placed} units in existing ${alloc.truckName}`);
+  }
+}
 
     // Create new trucks for remaining
     while (remainingQty > 0) {
