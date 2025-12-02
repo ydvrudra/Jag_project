@@ -541,6 +541,8 @@ async function allocateTrucksAndPrice({
            (pkg.widthFt <= truck.usableLengthFt && pkg.lengthFt <= truck.usableWidthFt && pkg.heightFt <= truck.usableHeightFt);
   }
 
+  
+
  function calculate3DFit(pkg, truck, existingItems = [], existingSpace3D = null) {
   // ✅ USE ACTUAL space3D from truck allocation
   if (existingSpace3D) {
@@ -594,9 +596,31 @@ async function allocateTrucksAndPrice({
     return placed;
   }
 
-  console.log("\n🚛 STARTING 3D ALLOCATION...");
+ // Group packages by dimensions
+const packageGroups = {};
+items.forEach(pkg => {
+  const key = `${pkg.lengthFt}_${pkg.widthFt}_${pkg.heightFt}_${pkg.weightKg}_${pkg.stackable}`;
+  
+  if (!packageGroups[key]) {
+    packageGroups[key] = {
+      pkgId: pkg.pkgId, // First package ID
+      lengthFt: pkg.lengthFt,
+      widthFt: pkg.widthFt,
+      heightFt: pkg.heightFt,
+      weightKg: pkg.weightKg,
+      stackable: pkg.stackable,
+      cbm: pkg.cbm,
+      qty: 0,
+      originalPkgIds: []
+    };
+  }
+  
+  packageGroups[key].qty += pkg.qty;
+  packageGroups[key].originalPkgIds.push(pkg.pkgId);
+});
 
-  let remainingItems = items.map(it => ({ ...it }));
+// Create combined remainingItems array
+let remainingItems = Object.values(packageGroups);
   const allocations = [];
 
   // ✅ MODIFIED: Sort by DIMENSION (largest length first), then stackable
