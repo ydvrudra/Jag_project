@@ -78,21 +78,40 @@ class Simple3DSpace {
           }
         }
       }
-      
-      // Also try width-wise arrangement (for better space utilization)
-      if (rot.length !== rot.width) { // Skip if square
-        const swappedRot = { length: rot.width, width: rot.length };
-        for (let x = 0; x <= this.truck.usableLengthFt - swappedRot.length; x += stepSize) {
-          for (let y = 0; y <= this.truck.usableWidthFt - swappedRot.width; y += stepSize) {
-            if (this.canPlace(x, y, 0, swappedRot.length, swappedRot.width, pkg.heightFt)) {
-              return { x, y, z: 0, ...swappedRot, height: pkg.heightFt };
-            }
-          }
-        }
-      }
     }
   }
 
+// ✅ EDGE POSITION CHECK (add after floor search, before stacking logic)
+const edgeCheckRotations = [
+  { length: pkg.lengthFt, width: pkg.widthFt },
+  { length: pkg.widthFt, width: pkg.lengthFt }
+];
+
+for (const rot of edgeCheckRotations) {
+  const maxX = this.truck.usableLengthFt - rot.length;
+  const maxY = this.truck.usableWidthFt - rot.width;
+  
+  if (maxX >= 0 && maxY >= 0) {
+    // 1. Check far corner
+    if (this.canPlace(maxX, maxY, 0, rot.length, rot.width, pkg.heightFt)) {
+      return { x: maxX, y: maxY, z: 0, ...rot, height: pkg.heightFt };
+    }
+    
+    // 2. Check right edge (different Y positions)
+    for (let y = 0; y <= maxY; y += 0.5) {
+      if (this.canPlace(maxX, y, 0, rot.length, rot.width, pkg.heightFt)) {
+        return { x: maxX, y: y, z: 0, ...rot, height: pkg.heightFt };
+      }
+    }
+    
+    // 3. Check top edge (different X positions)
+    for (let x = 0; x <= maxX; x += 0.5) {
+      if (this.canPlace(x, maxY, 0, rot.length, rot.width, pkg.heightFt)) {
+        return { x: x, y: maxY, z: 0, ...rot, height: pkg.heightFt };
+      }
+    }
+  }
+}
   // ✅ IMPROVEMENT 2: Better stacking logic for STACKABLE items
   if (pkg.stackable) {
     const stackables = this.placedBoxes.filter(b => b.pkg.stackable);
@@ -129,7 +148,9 @@ class Simple3DSpace {
       
       if (currentLayers < maxLayers) {
         for (const rot of rotations) {
-          if (rot.length <= topBox.length && rot.width <= topBox.width) {
+         const fitsTopBox = (rot.length <= topBox.length && rot.width <= topBox.width) ||
+                   (rot.width <= topBox.length && rot.length <= topBox.width);
+         if (fitsTopBox) {
             if (this.canPlace(baseX, baseY, topZ, rot.length, rot.width, pkg.heightFt)) {
               return { x: baseX, y: baseY, z: topZ, ...rot, height: pkg.heightFt };
             }
@@ -152,7 +173,9 @@ class Simple3DSpace {
       if (topZ + pkg.heightFt > this.truck.usableHeightFt) continue;
       
       for (const rot of rotations) {
-        if (rot.length <= stackable.length && rot.width <= stackable.width) {
+        const fitsStackable = (rot.length <= stackable.length && rot.width <= stackable.width) ||
+                      (rot.width <= stackable.length && rot.length <= stackable.width);
+        if (fitsStackable) {
           if (this.canPlace(stackable.x, stackable.y, topZ, 
                            rot.length, rot.width, pkg.heightFt)) {
             return { 
@@ -227,7 +250,9 @@ class Simple3DSpace {
       if (topZ + pkg.heightFt > this.truck.usableHeightFt) continue;
       
       for (const rot of rotations) {
-        if (rot.length <= stackable.length && rot.width <= stackable.width) {
+       const fitsOnStackable = (rot.length <= stackable.length && rot.width <= stackable.width) ||
+                        (rot.width <= stackable.length && rot.length <= stackable.width);
+           if (fitsOnStackable) {
           if (this.canPlace(stackable.x, stackable.y, topZ, 
                            rot.length, rot.width, pkg.heightFt)) {
             return { 
@@ -303,13 +328,27 @@ class Simple3DSpace {
     
     // Priority 3: Any empty floor space (re-check with optimized search)
     for (const rot of rotations) {
-      for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += 1) {
-        for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += 1) {
-          if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
-            return { x, y, z: 0, ...rot, height: pkg.heightFt };
-          }
-        }
-      }
+// First try exact multiples (optimal packing)
+for (let xMultiplier = 0; xMultiplier <= Math.floor(this.truck.usableLengthFt / rot.length); xMultiplier++) {
+  for (let yMultiplier = 0; yMultiplier <= Math.floor(this.truck.usableWidthFt / rot.width); yMultiplier++) {
+    const x = xMultiplier * rot.length;
+    const y = yMultiplier * rot.width;
+    if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
+      return { x, y, z: 0, ...rot, height: pkg.heightFt };
+    }
+  }
+}
+
+// Then try with stepSize for remaining gaps
+for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += stepSize) {
+  for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += stepSize) {
+    // Skip positions already checked in exact multiples
+    if (x % rot.length === 0 && y % rot.width === 0) continue;
+    if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
+      return { x, y, z: 0, ...rot, height: pkg.heightFt };
+    }
+  }
+}
     }
   }
 
@@ -370,18 +409,30 @@ class Simple3DSpace {
     // Check weight constraint
     if (tempSpace.totalWeight + pkg.weightKg > this.truck.maxWeightKg) break;
     
-    // ✅ FIX: Only check size mixing for NON-STACKABLE
     if (!pkg.stackable && tempSpace.placedBoxes.length > 0) {
-      const firstBox = tempSpace.placedBoxes[0];
-      const firstLength = Math.max(firstBox.length, firstBox.width);
-      const pkgLength = Math.max(pkg.lengthFt, pkg.widthFt);
-      
-      // Don't mix very different sizes for non-stackable
-      if (Math.abs(firstLength - pkgLength) > Math.min(firstLength, pkgLength) * 2) {
-        console.log(`   ⚠️ Won't mix non-stackable ${firstLength}ft with ${pkgLength}ft`);
-        break;
-      }
+  // Check if mixing with existing boxes is problematic
+  let canMix = true;
+  
+  for (const box of tempSpace.placedBoxes) {
+    if (box.pkg.stackable) continue; // Stackable ke saath mix OK
+    
+    // Non-stackable with non-stackable - check size compatibility
+    const boxMaxDim = Math.max(box.length, box.width);
+    const boxMinDim = Math.min(box.length, box.width);
+    const pkgMaxDim = Math.max(pkg.lengthFt, pkg.widthFt);
+    const pkgMinDim = Math.min(pkg.lengthFt, pkg.widthFt);
+    
+    // Don't mix very different sizes (more than 2x difference)
+    if (pkgMaxDim > boxMaxDim * 2 || boxMaxDim > pkgMaxDim * 2) {
+      canMix = false;
+      break;
     }
+  }
+  
+  if (!canMix) {
+    break;
+  }
+}
     
     // Place the box
     tempSpace.placeBox(pkg, position.x, position.y, position.z,

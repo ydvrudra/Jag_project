@@ -12,7 +12,6 @@ function calculateCBM(lengthFt, widthFt, heightFt) {
   const cbm = (l * w * h) / 35.3147;
   return Number(cbm.toFixed(6));
 }
-
 // --- Unit Conversion ---
 function unitToFeet(value, unitId) {
   if (value == null) return 0;
@@ -25,7 +24,6 @@ function unitToFeet(value, unitId) {
     default: return value;
   }
 }
-
 // --- 1) Load ONLY necessary header and packages ---
 async function loadHeaderAndPackages(client, recordId, bodyPackages, calculationUnitId) {
   let hdr = { CalculationUnitId: calculationUnitId }; // ✅ Form se aayega
@@ -120,7 +118,6 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 async function loadVehiclesAndCapacities(client) {
   // ✅ RETURN CACHED DATA IF AVAILABLE
   if (vehicleCache && (Date.now() - cacheTimestamp) < CACHE_DURATION) {
-    console.log("✅ Using cached vehicle data");
     return vehicleCache;
   }
 
@@ -161,8 +158,6 @@ async function loadVehiclesAndCapacities(client) {
   // ✅ STORE IN CACHE
   vehicleCache = vehicles;
   cacheTimestamp = Date.now();
-  console.log("✅ Vehicle data cached");
-
   return vehicles;
 }
 

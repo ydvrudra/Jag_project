@@ -1,11 +1,27 @@
 // truckHelpers/truckAllocationHelpers.js
 const { sql } = require('../config/sqlConfig');
 
+// Helper function to get default currency
+async function getDefaultCurrency(client) {
+  try {
+    const query = `
+      SELECT TOP 1 CurrencyCode 
+      FROM CurrencyMaster 
+      WHERE IsDefault = 1
+    `;
+    const result = await client.request().query(query);
+    return result.recordset[0]?.CurrencyCode || 'INR';
+  } catch (error) {
+    return 'INR';
+  }
+}
+
 async function processFinalAllocations({ 
   allocationsInstances = [], 
   remainingPkgs = [], 
   client, 
-  vehicles = [] 
+  vehicles = [] ,
+  truckRatesMap = {} 
 }) {
   // ✅ Safety defaults
   remainingPkgs = Array.isArray(remainingPkgs) ? remainingPkgs : [];
@@ -32,7 +48,7 @@ async function processFinalAllocations({
     return { totalTruckingChargesInUSD: 0, allocationsStatus };
   }
 
-  // ✅ Aggregate instances per truckId - FIX USEDCBM
+  // ✅ Aggregate instances per truckId
   const grouped = {};
   for (const inst of allocationsInstances) {
     if (!grouped[inst.truckId]) {
@@ -47,7 +63,7 @@ async function processFinalAllocations({
     }
     grouped[inst.truckId].truckCount += 1;
     grouped[inst.truckId].qtyItems += inst.items.reduce((s, it) => s + (it.qty || 0), 0);
-    grouped[inst.truckId].usedCBM += Number(inst.usedCBM || 0);  // ✅ FIX: Add usedCBM
+    grouped[inst.truckId].usedCBM += Number(inst.usedCBM || 0);  
     grouped[inst.truckId].usedWeightKg += inst.usedWeight;
   }
 
@@ -68,13 +84,32 @@ async function processFinalAllocations({
     }
   }
 
+  // ✅ DYNAMIC DEFAULT CURRENCY
+  const defaultCurrency = await getDefaultCurrency(client);
+  const firstTruckCurrency = finalAllocations.length > 0 
+    ? (truckRatesMap[finalAllocations[0].truckId]?.currency || defaultCurrency)
+    : defaultCurrency;
+
   const allocationsStatus = {
     status: 'success',
     message: 'All packages allocated',
-    allocations: finalAllocations,
+    allocations: finalAllocations.map(alloc => ({
+      truckId: alloc.truckId,
+      truckName: alloc.truckName,
+      truckCount: alloc.truckCount,
+      qtyItems: alloc.qtyItems,
+      usedCBM: alloc.usedCBM,
+      usedWeightKg: alloc.usedWeightKg,
+      ratePerTruck: truckRatesMap[alloc.truckId]?.rate || 0,
+      currency: truckRatesMap[alloc.truckId]?.currency || firstTruckCurrency,
+      totalForThisTruck: (truckRatesMap[alloc.truckId]?.rate || 0) * alloc.truckCount
+    })),
+    totalCost: finalAllocations.reduce((sum, alloc) => 
+      sum + ((truckRatesMap[alloc.truckId]?.rate || 0) * alloc.truckCount), 0),
+    currency: firstTruckCurrency 
   };
 
-  return {  allocationsStatus };
+  return { allocationsStatus };
 }
 
 module.exports = { processFinalAllocations };

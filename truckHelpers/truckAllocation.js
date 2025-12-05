@@ -1,6 +1,8 @@
-//truckHelpers/truckAllocation.js
- const { processFinalAllocations } = require('./truckAllocationHelpers');
+// truckHelpers/truckAllocation.js
+const { processFinalAllocations } = require('./truckAllocationHelpers');
 const Simple3DSpace = require('./Simple3DSpace');
+const { tryAllocationStrategy } = require('./AllocationStrategy');
+const TruckOptionsGenerator = require('./truckOptionsGenerator');
 
 async function allocateTrucksAndPrice({
   client,
@@ -8,9 +10,12 @@ async function allocateTrucksAndPrice({
   vehicles,
   persist,
   recordId,
-  userId
+  userId,
+  fromLocationId = null,    
+  toLocationId = null,      
+  companyId = null,        
+  segmentId = null
 }) {
-
   if (!pkgs || !pkgs.length) return { status: "no-packages", message: "No packages to allocate", allocations: [] };
 
   let oversizedPackages = [];
@@ -28,16 +33,49 @@ async function allocateTrucksAndPrice({
       ? Number(copy.cbmCapacity)
       : (copy.usableLengthFt && copy.usableWidthFt && copy.usableHeightFt ? Simple3DSpace.feet3ToCBM(copy.usableLengthFt, copy.usableWidthFt, copy.usableHeightFt) : 0);
     return copy;
-  }).sort((a, b) => a.cbmCapacity - b.cbmCapacity);
-
-  console.log("\n=== Available Trucks (Smallest to Largest) ===");
-  vehicles.forEach(v => {
-    console.log(`Truck: ${v.truckName}, CBM: ${v.cbmCapacity}, Weight: ${v.maxWeightKg}kg, Dim: ${v.usableLengthFt}x${v.usableWidthFt}x${v.usableHeightFt}ft`);
   });
+
+  // Fetch actual rates
+  let truckRatesMap = {};
+  if (fromLocationId && toLocationId && companyId && segmentId) {
+    //console.log("\n💰 FETCHING ACTUAL RATES FROM DATABASE...");
+    try {
+      const TruckRateCalculator = require('./truckRateCalculator');
+      const rateCalculator = new TruckRateCalculator(client);
+      const truckIds = vehicles.map(v => v.truckId);
+      const rates = await rateCalculator.getRatesForTrucks(
+        truckIds, fromLocationId, toLocationId, companyId, segmentId
+      );
+      
+      if (rates && rates.length > 0) {
+        rates.forEach(rate => {
+          truckRatesMap[rate.truckId] = {
+            rate: rate.rateWithAppreciation,
+            currency: rate.currencyCode || 'INR',
+            currencyId: rate.currencyId,
+            ratePerCbm: rate.ratePerCbm,
+            truckName: rate.truckName
+          };
+          const vehicle = vehicles.find(v => v.truckId === rate.truckId);
+          if (vehicle) {
+            vehicle.rate = rate.rateWithAppreciation;
+            vehicle.ratePerCbm = rate.ratePerCbm;
+            vehicle.hasRate = true;
+          }
+        });
+        
+       // console.log("\n✅ ACTUAL RATES LOADED:");
+        Object.keys(truckRatesMap).forEach(truckId => {
+         // console.log(`  Truck ${truckId} (${truckRatesMap[truckId].truckName}): ${truckRatesMap[truckId].currency} ${truckRatesMap[truckId].rate}`);
+        });
+      }
+    } catch (error) {
+      console.error("❌ ERROR FETCHING RATES:", error);
+    }
+  }
 
   // Validate packages
   const maxTruckLength = Math.max(...vehicles.map(v => v.usableLengthFt));
-  const maxTruckWeight = Math.max(...vehicles.map(v => v.maxWeightKg));
 
   for (const pkg of pkgs) {
     const lengthFt = Number(pkg.lengthFt || pkg.length || 0);
@@ -46,8 +84,6 @@ async function allocateTrucksAndPrice({
     const weightKg = Number(pkg.weightKg || pkg.weight || 0);
 
     let isValid = true;
-
-    // Check dimensions
     const maxDimension = Math.max(lengthFt, widthFt, heightFt);
     const minDimension = Math.min(lengthFt, widthFt, heightFt);
     
@@ -61,17 +97,6 @@ async function allocateTrucksAndPrice({
       });
       isValid = false;
     }
-
-    // // Check weight
-    // if (weightKg > maxTruckWeight) {
-    //   overweightPackages.push({
-    //     pkgId: pkg.pkgId,
-    //     weight: `${weightKg}kg`,
-    //     maxWeight: `${maxTruckWeight}kg`,
-    //     note: "Package too heavy"
-    //   });
-    //   isValid = false;
-    // }
 
     if (isValid) {
       validPackages.push(pkg);
@@ -103,255 +128,236 @@ async function allocateTrucksAndPrice({
       stackable: p.stackable !== false,
       cbm: cbmVal,
       qty: Number(p.qty || 1),
-      originalWeight: Number(p.weightKg || p.weight || 0) // Store total weight
+      originalWeight: Number(p.weightKg || p.weight || 0)
     };
   });
 
-  console.log("\n=== Packages to Allocate ===");
+  //console.log("\n=== Packages to Allocate ===");
   items.forEach(it => {
-    console.log(`Pkg: ${it.pkgId}, Size: ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, CBM: ${it.cbm}, Weight: ${it.weightKg}kg, Qty: ${it.qty}, Stackable: ${it.stackable}`);
+   // console.log(`Pkg: ${it.pkgId}, Size: ${it.lengthFt}x${it.widthFt}x${it.heightFt}ft, CBM: ${it.cbm}, Weight: ${it.weightKg}kg, Qty: ${it.qty}, Stackable: ${it.stackable}`);
   });
 
-  // ✅ SIMPLE CHECK: Can single unit fit in truck
-  function canSingleUnitFit(pkg, truck) {
-    // Check both rotations (length↔width, height FIXED)
-    return (pkg.lengthFt <= truck.usableLengthFt && pkg.widthFt <= truck.usableWidthFt && pkg.heightFt <= truck.usableHeightFt) ||
-           (pkg.widthFt <= truck.usableLengthFt && pkg.lengthFt <= truck.usableWidthFt && pkg.heightFt <= truck.usableHeightFt);
+  // Generate dynamic strategies
+  const strategies = generateDynamicStrategies(vehicles, truckRatesMap);
+  const allStrategyResults = [];
+  
+  for (const strategy of strategies) {
+    const result = await tryAllocationStrategy(strategy.name, strategy.sortedVehicles, items, truckRatesMap);
+    allStrategyResults.push(result);
   }
-
- function calculate3DFit(pkg, truck, existingItems = [], existingSpace3D = null) {
-  // ✅ USE ACTUAL space3D from truck allocation
-  if (existingSpace3D) {
-    // Clone the space to test
+  
+  // Choose best result
+  const bestResult = selectBestResult(allStrategyResults);
+  
+  // Smart single truck check
+  const totalPackages = items.reduce((total, item) => total + (item.qty || 0), 0);
+  const totalRequiredCBM = items.reduce((sum, item) => sum + (item.cbm * item.qty), 0);
+  const totalRequiredWeight = items.reduce((sum, item) => sum + (item.weightKg * item.qty), 0);
+  
+  //console.log(`\n🔍 CHECKING SINGLE TRUCK OPTIONS`);
+  //console.log(`Total: ${totalPackages} packages, ${totalRequiredCBM.toFixed(2)} CBM, ${totalRequiredWeight.toFixed(0)} kg`);
+  
+  let foundBetterOption = false;
+  const trucksByRate = [...vehicles].sort((a, b) => {
+    const rateA = truckRatesMap[a.truckId]?.rate || 999999;
+    const rateB = truckRatesMap[b.truckId]?.rate || 999999;
+    return rateA - rateB;
+  });
+  
+  for (const truck of trucksByRate) {
+    const truckRate = truckRatesMap[truck.truckId]?.rate || 999999;
+    
+    if (truckRate >= bestResult.totalCost) continue;
+    
+    // Check capacity
+    if (totalRequiredCBM > truck.cbmCapacity || totalRequiredWeight > truck.maxWeightKg) continue;
+    
+    // 3D packing check
     const tempSpace = new Simple3DSpace(truck);
-    tempSpace.placedBoxes = [...existingSpace3D.placedBoxes];
-    tempSpace.totalCBM = existingSpace3D.totalCBM;
-    tempSpace.totalWeight = existingSpace3D.totalWeight;
-    tempSpace.itemsList = [...existingSpace3D.itemsList];
+    let allFit = true;
+    let fittedCount = 0;
     
-    return tempSpace.calculateMaxFit(pkg, pkg.qty);
-  }
-  
-  // Fallback: old logic (for backward compatibility)
-  const space = new Simple3DSpace(truck);
-  return space.calculateMaxFit(pkg, pkg.qty);
-}
-
-  // ✅ Place units in truck
-  function placeInTruck(pkg, truckInstance, qtyToPlace) {
-    if (!truckInstance.space3D) {
-      truckInstance.space3D = new Simple3DSpace(truckInstance.truckObj);
-    }
-    
-    let placed = 0;
-    for (let i = 0; i < qtyToPlace; i++) {
-      const position = truckInstance.space3D.findBestPosition(pkg);
-      if (!position) break;
+    for (const item of items) {
+      const testItem = { ...item };
+      const maxFit = tempSpace.calculateMaxFit(testItem, item.qty);
       
-      // Check constraints
-      if (truckInstance.space3D.totalCBM + pkg.cbm > truckInstance.truckObj.cbmCapacity) break;
-      if (truckInstance.space3D.totalWeight + pkg.weightKg > truckInstance.truckObj.maxWeightKg) break;
-      
-      truckInstance.space3D.placeBox(pkg, position.x, position.y, position.z,
-                                    position.length, position.width, position.height);
-      placed++;
-    }
-    
-    // Update legacy fields
-    truckInstance.usedCBM = truckInstance.space3D.getUsedCBM();
-    truckInstance.usedWeight = truckInstance.space3D.getUsedWeight();
-    
-    // Update items list
-    const existingItem = truckInstance.items.find(it => it.pkgId === pkg.pkgId);
-    if (existingItem) {
-      existingItem.qty += placed;
-    } else if (placed > 0) {
-      truckInstance.items.push({ ...pkg, qty: placed });
-    }
-    
-    return placed;
-  }
-
- // Group packages by dimensions
-const packageGroups = {};
-items.forEach(pkg => {
-  const key = `${pkg.lengthFt}_${pkg.widthFt}_${pkg.heightFt}_${pkg.weightKg}_${pkg.stackable}`;
-  
-  if (!packageGroups[key]) {
-    packageGroups[key] = {
-      pkgId: pkg.pkgId, // First package ID
-      lengthFt: pkg.lengthFt,
-      widthFt: pkg.widthFt,
-      heightFt: pkg.heightFt,
-      weightKg: pkg.weightKg,
-      stackable: pkg.stackable,
-      cbm: pkg.cbm,
-      qty: 0,
-      originalPkgIds: []
-    };
-  }
-  
-  packageGroups[key].qty += pkg.qty;
-  packageGroups[key].originalPkgIds.push(pkg.pkgId);
-});
-
-// Create combined remainingItems array
-let remainingItems = Object.values(packageGroups);
-  const allocations = [];
-
-  // ✅ MODIFIED: Sort by DIMENSION (largest length first), then stackable
-remainingItems.sort((a, b) => {
-  // First by maximum dimension (largest first)
-  const aMaxDim = Math.max(a.lengthFt, a.widthFt, a.heightFt);
-  const bMaxDim = Math.max(b.lengthFt, b.widthFt, b.heightFt);
-  if (bMaxDim !== aMaxDim) return bMaxDim - aMaxDim;
-  
-  // Then by whether it's non-stackable (non-stackable first)
-  if (a.stackable !== b.stackable) return a.stackable ? 1 : -1;
-  
-  // Then by volume
-  return (b.lengthFt * b.widthFt * b.heightFt) - (a.lengthFt * a.widthFt * a.heightFt);
-});
-
-  // Allocate each package type
-  for (const currentItem of remainingItems) {
-    let remainingQty = currentItem.qty;
-    
-    console.log(`\n=== ALLOCATING ${currentItem.pkgId} (${remainingQty} units) ===`);
-
-    // Try existing trucks first
-    for (const alloc of allocations) {
-      if (remainingQty <= 0) break;
-      
-      // Check if single unit fits
-      if (!canSingleUnitFit(currentItem, alloc.truckObj)) continue;
-      
-     // ✅ PASS THE ACTUAL space3D OBJECT
-  const canFit = calculate3DFit(currentItem, alloc.truckObj, alloc.items, alloc.space3D);
-  
-  if (canFit > 0) {
-    const toPlace = Math.min(canFit, remainingQty);
-    const placed = placeInTruck(currentItem, alloc, toPlace);
-    remainingQty -= placed;
-    console.log(`   ✅ Placed ${placed} units in existing ${alloc.truckName}`);
-  }
-}
-
-    // Create new trucks for remaining
-    while (remainingQty > 0) {
-      console.log(`   🔎 Need new truck for ${remainingQty} units`);
-      
-      let bestTruck = null;
-      let maxFit = 0;
-      
-      // Find best truck
-      for (const truck of vehicles) {
-        if (!canSingleUnitFit(currentItem, truck)) continue;
-        
-        const tempSpace = new Simple3DSpace(truck);
-        const fit = tempSpace.calculateMaxFit(currentItem, remainingQty);
-        
-        if (fit > maxFit) {
-          maxFit = fit;
-          bestTruck = truck;
+      if (maxFit >= item.qty) {
+        for (let i = 0; i < item.qty; i++) {
+          const position = tempSpace.findBestPosition(testItem);
+          if (position) {
+            tempSpace.placeBox(testItem, position.x, position.y, position.z,
+                             position.length, position.width, position.height);
+            fittedCount++;
+          } else {
+            allFit = false;
+            break;
+          }
         }
+      } else {
+        allFit = false;
       }
       
-      if (!bestTruck) {
-        console.log(`   ❌ No truck can fit ${currentItem.pkgId}`);
-        break;
-      }
-      
-      // Create new allocation
-      const newAlloc = {
-        truckId: bestTruck.truckId,
-        truckName: bestTruck.truckName,
-        truckObj: bestTruck,
-        usedCBM: 0,
-        usedWeight: 0,
-        items: [],
-        space3D: new Simple3DSpace(bestTruck)
-      };
-      
-      const toPlace = Math.min(maxFit, remainingQty);
-      const placed = placeInTruck(currentItem, newAlloc, toPlace);
-      remainingQty -= placed;
-      allocations.push(newAlloc);
-      
-      console.log(`   🚛 Created ${bestTruck.truckName} with ${placed} units`);
+      if (!allFit) break;
     }
     
-    // Update remaining quantity
-    currentItem.qty = remainingQty;
+    if (allFit && fittedCount === totalPackages) {
+    //  console.log(`   🎉 CHEAPER FOUND: ${truck.truckName} - ${truckRatesMap[truck.truckId]?.currency || 'INR'} ${truckRate}`);
+      
+      bestResult.strategyName = `Single-${truck.truckName}`;
+      bestResult.allocations = [{
+        truckId: truck.truckId,
+        truckName: truck.truckName,
+        truckObj: truck,
+        usedCBM: tempSpace.getUsedCBM(),
+        usedWeight: tempSpace.getUsedWeight(),
+        items: items.map(it => ({ ...it })),
+        space3D: tempSpace
+      }];
+      bestResult.totalCost = truckRate;
+      bestResult.successRate = 100;
+      
+      foundBetterOption = true;
+      break;
+    }
   }
-
-  // Calculate totals
-  const totalAllocated = allocations.reduce((total, alloc) => {
-    return total + alloc.items.reduce((sum, item) => sum + (item.qty || 0), 0);
-  }, 0);
-
-  const totalRequired = items.reduce((total, item) => total + (item.qty || 0), 0);
-
-  console.log(`\n📊 ALLOCATION SUMMARY: ${totalAllocated}/${totalRequired} items allocated in ${allocations.length} trucks`);
-
-  // Filter out empty allocations and items
+  
+  if (!foundBetterOption) {
+   // console.log(`\n❌ No better single truck option found`);
+  }
+    
+  // Final processing
+  const allocations = bestResult.allocations;
+  const remainingItems = bestResult.remainingItems;
+  
   const validAllocations = allocations.filter(alloc => alloc.items.length > 0);
   
-  // Prepare response
-  const unallocatedItems = remainingItems.filter(item => item.qty > 0);
-  
-  if (unallocatedItems.length > 0) {
-    console.log(`\n❌ PARTIAL ALLOCATION: ${unallocatedItems.length} items remaining`);
+  if (remainingItems.length > 0) {
+   // console.log(`\n❌ PARTIAL ALLOCATION: ${remainingItems.length} items remaining`);
     
     const { allocationsStatus } = await processFinalAllocations({
       allocationsInstances: validAllocations,
-      remainingPkgs: unallocatedItems,
+      remainingPkgs: remainingItems,
       client,
-      vehicles
+      vehicles,
+      truckRatesMap
     });
 
     if (allocationsStatus) {
       return allocationsStatus;
     }
-
-    return {
-      status: "partial-success",
-      message: `Partially allocated ${totalAllocated}/${totalRequired} items`,
-      allocations: validAllocations.map(alloc => ({
-        truckId: alloc.truckId,
-        truckName: alloc.truckName,
-        items: alloc.items.map(it => ({ pkgId: it.pkgId, qty: it.qty })),
-        totalItems: alloc.items.reduce((sum, item) => sum + item.qty, 0),
-        usedCBM: Number(alloc.usedCBM.toFixed(6)),
-        usedWeightKg: alloc.usedWeight,
-        capacityCBM: alloc.truckObj.cbmCapacity,
-        capacityWeight: alloc.truckObj.maxWeightKg,
-        cbmUtilization: `${((alloc.usedCBM / alloc.truckObj.cbmCapacity) * 100).toFixed(1)}%`,
-        weightUtilization: `${((alloc.usedWeight / alloc.truckObj.maxWeightKg) * 100).toFixed(1)}%`
-      })),
-      remainingItems: unallocatedItems,
-      totalAllocated,
-      totalRequired,
-      totalTruckingChargesInUSD: totalTruckingChargesInUSD || 0
-    };
   }
+  
+  // Display final allocation
   validAllocations.forEach(alloc => {
     console.log(`\n🚛 ${alloc.truckName}:`);
     console.log(`   📦 ${alloc.items.map(it => `${it.pkgId}×${it.qty}`).join(', ')}`);
-    console.log(`   📊 ${alloc.usedCBM.toFixed(3)}CBM / ${alloc.truckObj.cbmCapacity}CBM (${((alloc.usedCBM / alloc.truckObj.cbmCapacity) * 100).toFixed(1)}%)`);
-    console.log(`   ⚖️  ${alloc.usedWeight.toFixed(1)}kg / ${alloc.truckObj.maxWeightKg}kg (${((alloc.usedWeight / alloc.truckObj.maxWeightKg) * 100).toFixed(1)}%)`);
+    console.log(`   📊 ${alloc.usedCBM.toFixed(3)}CBM / ${alloc.truckObj.cbmCapacity}CBM`);
+    console.log(`   ⚖️  ${alloc.usedWeight.toFixed(1)}kg / ${alloc.truckObj.maxWeightKg}kg`);
   });
 
-  const { allocationsStatus } = await processFinalAllocations({
+  const currentResult = await processFinalAllocations({
     allocationsInstances: validAllocations,
     remainingPkgs: [],
     client,
-    vehicles
+    vehicles,
+    truckRatesMap
   });
 
-  if (allocationsStatus) {
-    return allocationsStatus;
+  // Line ~280 ke bad ka code update karo:
+const optionsGenerator = new TruckOptionsGenerator(vehicles, truckRatesMap);
+const generatedOptions = await optionsGenerator.generateOptions(
+  items,
+  currentResult.allocationsStatus
+);
+
+// ✅ SIMPLIFY: generatedOptions already array hai
+const finalOptions = Array.isArray(generatedOptions) ? generatedOptions : [];
+
+// Return final structure
+return {
+  status: "success",
+  message: finalOptions.length > 1 
+    ? "Multiple allocation options available" 
+    : finalOptions.length === 1 
+      ? "Single allocation option available" 
+      : "No allocation options available",
+  options: finalOptions,
+  defaultOptionId: finalOptions.length > 0 ? finalOptions[0].optionId : 1,
+  recommendation: {
+    optionId: finalOptions.length > 0 ? finalOptions[0].optionId : 1,
+    reason: finalOptions.length > 1 
+      ? "Lowest total cost" 
+      : finalOptions.length === 1 
+        ? "Only option available" 
+        : "No options available"
   }
+};
+}
+
+// Helper functions
+function generateDynamicStrategies(vehicles, truckRatesMap) {
+  const strategies = [];
+  
+  strategies.push({
+    name: "Smallest-Capacity-First",
+    sortedVehicles: [...vehicles].sort((a, b) => a.cbmCapacity - b.cbmCapacity)
+  });
+  
+  strategies.push({
+    name: "Largest-Capacity-First", 
+    sortedVehicles: [...vehicles].sort((a, b) => b.cbmCapacity - a.cbmCapacity)
+  });
+  
+  if (Object.keys(truckRatesMap).length > 0) {
+    strategies.push({
+      name: "Cheapest-Rate-First",
+      sortedVehicles: [...vehicles].sort((a, b) => {
+        const rateA = truckRatesMap[a.truckId]?.rate || 999999;
+        const rateB = truckRatesMap[b.truckId]?.rate || 999999;
+        return rateA - rateB;
+      })
+    });
+    
+    strategies.push({
+      name: "Best-Value-First",
+      sortedVehicles: [...vehicles].sort((a, b) => {
+        const rateA = truckRatesMap[a.truckId]?.rate || 999999;
+        const rateB = truckRatesMap[b.truckId]?.rate || 999999;
+        const valueA = rateA / (a.cbmCapacity || 1);
+        const valueB = rateB / (b.cbmCapacity || 1);
+        return valueA - valueB;
+      })
+    });
+  }
+  
+  return strategies;
+}
+
+function selectBestResult(allStrategyResults) {
+  // Perfect allocations
+  const perfectResults = allStrategyResults.filter(r => r.totalAllocated === r.totalRequired);
+  
+  if (perfectResults.length > 0) {
+    perfectResults.sort((a, b) => a.totalCost - b.totalCost);
+    console.log(`\n✅ Found ${perfectResults.length} PERFECT allocations`);
+    console.log(`🏆 WINNER: ${perfectResults[0].strategyName} (${perfectResults[0].totalCost})`);
+    return perfectResults[0];
+  }
+  
+  // Partial allocations
+  allStrategyResults.sort((a, b) => {
+    if (b.totalAllocated !== a.totalAllocated) {
+      return b.totalAllocated - a.totalAllocated;
+    }
+    return a.totalCost - b.totalCost;
+  });
+  
+ // console.log(`\n⚠️ No perfect allocation, using BEST PARTIAL`);
+  //console.log(`🏆 WINNER: ${allStrategyResults[0].strategyName}`);
+ // console.log(`   Items: ${allStrategyResults[0].totalAllocated}/${allStrategyResults[0].totalRequired}`);
+ // console.log(`   Cost: ${allStrategyResults[0].totalCost}`);
+  
+  return allStrategyResults[0];
 }
 
 module.exports = { allocateTrucksAndPrice };

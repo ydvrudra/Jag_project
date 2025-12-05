@@ -1,28 +1,36 @@
 // controllers/truckController.js
 const { pool, poolConnect } = require('../config/sqlConfig');
-const { loadHeaderAndPackages, loadVehiclesAndCapacities, packageFits3D } = require('../truckHelpers/loadData');
+const { loadHeaderAndPackages, loadVehiclesAndCapacities } = require('../truckHelpers/loadData');
 const { allocateTrucksAndPrice } = require('../truckHelpers/truckAllocation');
 
 async function suggestTruckForEnquiry(req, res) {
   await poolConnect;
   const client = pool;
-  const { recordId, packages: bodyPackages = [], userId = 0, persist = false } = req.body || {};
+  const { 
+    recordId, 
+    packages: bodyPackages = [], 
+    userId = 0, 
+    persist = false,
+    calculationUnitId,
+    fromLocationId,
+    toLocationId,
+    companyId,
+    segmentId
+  } = req.body || {};
 
   try {
     // --- 1) Load header & packages ---
-    const { hdr, pkgs } = await loadHeaderAndPackages(client, recordId, bodyPackages, req.body.calculationUnitId);
+    const { hdr, pkgs } = await loadHeaderAndPackages(client, recordId, bodyPackages, calculationUnitId);
 
     if (!pkgs.length) {
       return res.status(200).json({ status: 'no-packages', message: 'No packages found' });
     }
-
     // --- 2) Load vehicles & capacities ---
     const vehicles = await loadVehiclesAndCapacities(client);
 
     if (!vehicles.length) {
       return res.status(500).json({ status: 'no-vehicles', message: 'No truck types found' });
     }
-
     // --- 3) Allocate trucks & calculate charges ---
     const result = await allocateTrucksAndPrice({
       client,
@@ -32,10 +40,13 @@ async function suggestTruckForEnquiry(req, res) {
       persist,
       recordId,
       userId,
-      packageFits3D
+      fromLocationId,
+      toLocationId,
+      companyId,
+      segmentId
     });
 
-      // ✅ UPDATED: Create repeated truck IDs based on count
+    // ✅ UPDATED: Create repeated truck IDs based on count
     if (recordId && result.status === 'success') {
       try {
         let repeatedTruckIds = [];
@@ -45,10 +56,8 @@ async function suggestTruckForEnquiry(req, res) {
           for (let i = 0; i < alloc.truckCount; i++) {
             repeatedTruckIds.push(alloc.truckId);
           }
-        });
-        
-        const truckIds = repeatedTruckIds.join(',');
-        
+        });     
+        const truckIds = repeatedTruckIds.join(',');     
         const updateQuery = `
           UPDATE EnquiryGenerationNew 
           SET VehicleTypeMasterId = @truckIds,
@@ -62,17 +71,15 @@ async function suggestTruckForEnquiry(req, res) {
           .input('recordId', sql.Int, recordId)
           .query(updateQuery);
           
-        console.log('✅ Repeated Truck IDs saved:', truckIds);
       } catch (updateError) {
-        console.error('Error saving truck IDs:', updateError);
       }
     }
 
     return res.status(200).json(result);
 
   } catch (err) {
-    console.error('suggestTruckForEnquiry error:', err);
     return res.status(500).json({ error: 'Internal error', details: err.message });
   }
 }
+
 module.exports = { suggestTruckForEnquiry };
