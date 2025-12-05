@@ -46,13 +46,13 @@ class TruckRateCalculator {
   // 2. Calculate FINAL rate for ONE truck (PROCEDURE LOGIC)
   async calculateFinalRateForTruck(vehicleId, fromLocationId, toLocationId, companyId, segmentId) {
     try {
-      console.log(`\n📊 Calculating rate for truck ${vehicleId}`);
-      console.log(`Route: ${fromLocationId} → ${toLocationId}`);
+     // console.log(`\n📊 Calculating rate for truck ${vehicleId}`);
+      //console.log(`Route: ${fromLocationId} → ${toLocationId}`);
       
       // Step 1: Get column name
       const columnName = await this.getVehicleColumnMapping(vehicleId);
       if (!columnName) {
-        console.log(`❌ No column mapping for vehicle ${vehicleId}`);
+       // console.log(`❌ No column mapping for vehicle ${vehicleId}`);
         return null;
       }
       
@@ -75,7 +75,7 @@ class TruckRateCalculator {
       
       const baseRateRow = baseRateResult.recordset[0];
       if (!baseRateRow || baseRateRow.BaseRate == null) {
-        console.log(`❌ No rate found for ${columnName} on this route`);
+       // console.log(`❌ No rate found for ${columnName} on this route`);
         return null;
       }
       
@@ -108,11 +108,11 @@ if (!contractCurrencyId) {
         .query(appreciationQuery);
       
       const appreciationPercent = appreciationResult.recordset[0]?.AppreciationPer || 0;
-      console.log(`📈 Appreciation %: ${appreciationPercent}`);
+     // console.log(`📈 Appreciation %: ${appreciationPercent}`);
       
       // Step 4: Apply appreciation (PROCEDURE LOGIC)
       const rateWithAppreciation = baseRate + (baseRate * appreciationPercent / 100.0);
-      console.log(`💰 After appreciation: ${rateWithAppreciation}`);
+     // console.log(`💰 After appreciation: ${rateWithAppreciation}`);
       
      // Step 5: Get exchange rate for USD conversion (if needed)
 let exchangeRateToUSD = 1;
@@ -138,13 +138,13 @@ const defaultCurrencyId = 10;
         if (exchangeResult.recordset[0]) {
           exchangeRateToUSD = exchangeResult.recordset[0].ExchangeRate;
         } else {
-          console.log(`⚠️ No exchange rate found for currency ${contractCurrencyId}, using 1.0`);
+         // console.log(`⚠️ No exchange rate found for currency ${contractCurrencyId}, using 1.0`);
         }
       } catch (error) {
-        console.log(`⚠️ Exchange rate query failed: ${error.message}, using 1.0`);
+        //console.log(`⚠️ Exchange rate query failed: ${error.message}, using 1.0`);
       }
     } else {
-      console.log(`✅ Currency is default (${defaultCurrencyId}), exchange rate not needed`);
+      //console.log(`✅ Currency is default (${defaultCurrencyId}), exchange rate not needed`);
     }
       
       // Step 6: Calculate USD equivalent (for TotalTruckingChargesInUSD)
@@ -221,9 +221,9 @@ const defaultCurrencyId = 10;
     // Sort by rateWithAppreciation (cheapest first)
     rates.sort((a, b) => a.rateWithAppreciation - b.rateWithAppreciation);
     
-    console.log(`\n✅ FINAL RATES FOR ${rates.length} TRUCKS (Procedure Logic):`);
+   // console.log(`\n✅ FINAL RATES FOR ${rates.length} TRUCKS (Procedure Logic):`);
     rates.forEach((rate, i) => {
-      console.log(`${i+1}. ${rate.truckName}: ₹${rate.rateWithAppreciation.toFixed(2)} (₹${rate.ratePerCbm.toFixed(2)}/CBM)`);
+     // console.log(`${i+1}. ${rate.truckName}: ₹${rate.rateWithAppreciation.toFixed(2)} (₹${rate.ratePerCbm.toFixed(2)}/CBM)`);
     });
     
     return rates;

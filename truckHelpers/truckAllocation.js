@@ -247,13 +247,13 @@ async function allocateTrucksAndPrice({
     }
   }
   
-  // Display final allocation
-  validAllocations.forEach(alloc => {
-    console.log(`\n🚛 ${alloc.truckName}:`);
-    console.log(`   📦 ${alloc.items.map(it => `${it.pkgId}×${it.qty}`).join(', ')}`);
-    console.log(`   📊 ${alloc.usedCBM.toFixed(3)}CBM / ${alloc.truckObj.cbmCapacity}CBM`);
-    console.log(`   ⚖️  ${alloc.usedWeight.toFixed(1)}kg / ${alloc.truckObj.maxWeightKg}kg`);
-  });
+  // // Display final allocation
+  // validAllocations.forEach(alloc => {
+  //   console.log(`\n🚛 ${alloc.truckName}:`);
+  //   console.log(`   📦 ${alloc.items.map(it => `${it.pkgId}×${it.qty}`).join(', ')}`);
+  //   console.log(`   📊 ${alloc.usedCBM.toFixed(3)}CBM / ${alloc.truckObj.cbmCapacity}CBM`);
+  //   console.log(`   ⚖️  ${alloc.usedWeight.toFixed(1)}kg / ${alloc.truckObj.maxWeightKg}kg`);
+  // });
 
   const currentResult = await processFinalAllocations({
     allocationsInstances: validAllocations,
@@ -360,8 +360,8 @@ function selectBestResult(allStrategyResults) {
   
   if (perfectResults.length > 0) {
     perfectResults.sort((a, b) => a.totalCost - b.totalCost);
-    console.log(`\n✅ Found ${perfectResults.length} PERFECT allocations`);
-    console.log(`🏆 WINNER: ${perfectResults[0].strategyName} (${perfectResults[0].totalCost})`);
+   // console.log(`\n✅ Found ${perfectResults.length} PERFECT allocations`);
+    //console.log(`🏆 WINNER: ${perfectResults[0].strategyName} (${perfectResults[0].totalCost})`);
     return perfectResults[0];
   }
   
