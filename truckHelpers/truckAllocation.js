@@ -273,8 +273,26 @@ const generatedOptions = await optionsGenerator.generateOptions(
 // ✅ SIMPLIFY: generatedOptions already array hai
 const finalOptions = Array.isArray(generatedOptions) ? generatedOptions : [];
 
-// Return final structure
+// ✅ GET FIRST OPTION FOR BACKWARD COMPATIBILITY
+const firstOption = finalOptions.length > 0 ? finalOptions[0] : null;
+
+// ✅ FORMAT ALLOCATIONS FOR SQL PROCEDURE
+function formatAllocationsForProcedure(option) {
+  if (!option || !option.allocations) return [];
+  
+  return option.allocations.map(alloc => ({
+    truckId: alloc.truckId,
+    truckName: alloc.truckName,
+    truckCount: alloc.truckCount || 1,
+    qtyItems: alloc.qtyItems || 0,
+    usedCBM: alloc.usedCBM || 0,
+    usedWeightKg: alloc.usedWeightKg || 0
+  }));
+}
+
+// ✅ RETURN DUAL FORMAT - BOTH NEW AND OLD
 return {
+  // ✅ NEW FORMAT (for frontend - multiple options)
   status: "success",
   message: finalOptions.length > 1 
     ? "Multiple allocation options available" 
@@ -290,7 +308,10 @@ return {
       : finalOptions.length === 1 
         ? "Only option available" 
         : "No options available"
-  }
+  },
+  
+  // ✅ OLD FORMAT (for SQL procedure - MUST HAVE!)
+  allocations: formatAllocationsForProcedure(firstOption)
 };
 }
 
