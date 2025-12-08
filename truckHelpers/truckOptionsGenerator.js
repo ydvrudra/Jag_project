@@ -27,6 +27,7 @@ class TruckOptionsGenerator {
     if (currentAllocation && currentAllocation.allocations) {
       const currentOption = this.createOptionFromAllocation(
         currentAllocation,
+        "Algorithm Suggested",
         options.length + 1
       );
       
@@ -102,7 +103,7 @@ class TruckOptionsGenerator {
       }
 
       options.push({
-        optionName: `${optionName}`,
+        optionName: `${optionName} - Most Economical`,
         allocations,
         totalCost: truckRate * trucksNeeded,
         currency,
@@ -148,7 +149,7 @@ class TruckOptionsGenerator {
       const currency = allocationPlan.allocations[0]?.currency || 'INR';
       
       options.push({
-        optionName: `${optionName}`,
+        optionName: `${optionName} - Balanced`,
         allocations: allocationPlan.allocations,
         totalCost: allocationPlan.totalCost,
         currency,
@@ -190,8 +191,8 @@ class TruckOptionsGenerator {
       
       // Create option
       const optionName = trucksNeeded === 1 
-        ? `${truck.truckName}`
-        : `${trucksNeeded} × ${truck.truckName}`;
+        ? `${truck.truckName} (High Capacity)`
+        : `${trucksNeeded} × ${truck.truckName} (High Capacity)`;
 
       // Create allocations
       const allocations = [];
@@ -264,33 +265,49 @@ class TruckOptionsGenerator {
     );
   }
 
-  // Final processing of options
-  finalizeOptions(options, totalPackages) {
-    if (options.length === 0) return [];
+ finalizeOptions(options, totalPackages) {
+  if (options.length === 0) return [];
 
-    // Sort by total cost (cheapest first)
-    options.sort((a, b) => a.totalCost - b.totalCost);
+  // Sort by total cost (cheapest first)
+  options.sort((a, b) => a.totalCost - b.totalCost);
 
-    // Remove duplicates (keep cheapest)
-    const uniqueOptions = [];
-    const seen = new Set();
+  // Remove duplicates (keep cheapest)
+  const uniqueOptions = [];
+  const seen = new Set();
+  
+  for (const option of options) {
+    // ✅ EXTRA TEXT REMOVE KARO OPTION NAME SE
+    let cleanOptionName = option.optionName;
     
-    for (const option of options) {
-      const key = `${option.totalCost.toFixed(2)}-${option.totalTrucks}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        uniqueOptions.push(option);
-      }
+    // Remove all suffix texts
+    const suffixesToRemove = [
+      ' - Most Economical',
+      ' - Balanced', 
+      ' - High Capacity',
+      ' - Algorithm Suggested',
+      ' (High Capacity)'
+    ];
+    
+    suffixesToRemove.forEach(suffix => {
+      cleanOptionName = cleanOptionName.replace(suffix, '');
+    });
+    
+    option.optionName = cleanOptionName.trim();
+    
+    const key = `${option.totalCost.toFixed(2)}-${option.totalTrucks}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueOptions.push(option);
     }
+  }
 
-    uniqueOptions.forEach(opt => {
-    // ✅ FIX 2: Dynamic currency symbol
-    const currencySymbol = this.getCurrencySymbol(opt.currency);
-   // console.log(`   Option ${opt.optionId}: ${opt.optionName} - ${currencySymbol}${opt.totalCost} (${opt.totalTrucks} trucks)`);
+  // ✅ OPTION ID ADD KARO
+  uniqueOptions.forEach((opt, index) => {
+    opt.optionId = index + 1;
   });
 
   return uniqueOptions; 
-  }
+}
 
   // ✅ NEW METHOD: Get currency symbol dynamically
 getCurrencySymbol(currencyCode) {
@@ -328,7 +345,7 @@ getCurrencySymbol(currencyCode) {
 
   generateAllocationBasedOptionName(allocations, suffix) {
     if (!allocations || allocations.length === 0) {
-      return `Custom Option - ${suffix}`;
+      return `Option`;
     }
 
     const truckCounts = {};
@@ -341,7 +358,7 @@ getCurrencySymbol(currencyCode) {
       count === 1 ? name : `${count} × ${name}`
     );
 
-    return `${parts.join(' + ')} - ${suffix}`;
+    return `${parts.join(' + ')}`;
   }
 
   // ==================== PACKING CALCULATIONS ====================
