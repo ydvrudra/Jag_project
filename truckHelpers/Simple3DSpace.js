@@ -66,13 +66,13 @@ class Simple3DSpace {
 
   // ✅ IMPROVEMENT 1: Try MORE AGGRESSIVE floor positions (better grid search)
   // First try with 1ft step (faster), then 0.5ft (more precise)
-  const stepSizes = [1, 0.5];
   
-  for (const stepSize of stepSizes) {
+  const stepSizes = [1, 0.5];
+  for (const currentStepSize  of stepSizes) {
     for (const rot of rotations) {
       // Try length-wise arrangement first (optimize for long packages)
-      for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += stepSize) {
-        for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += stepSize) {
+      for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += currentStepSize) {
+        for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += currentStepSize) {
           if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
             return { x, y, z: 0, ...rot, height: pkg.heightFt };
           }
@@ -326,20 +326,22 @@ for (const rot of edgeCheckRotations) {
       }
     }
     
-    // Priority 3: Any empty floor space (re-check with optimized search)
-    for (const rot of rotations) {
-// First try exact multiples (optimal packing)
-for (let xMultiplier = 0; xMultiplier <= Math.floor(this.truck.usableLengthFt / rot.length); xMultiplier++) {
-  for (let yMultiplier = 0; yMultiplier <= Math.floor(this.truck.usableWidthFt / rot.width); yMultiplier++) {
-    const x = xMultiplier * rot.length;
-    const y = yMultiplier * rot.width;
-    if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
-      return { x, y, z: 0, ...rot, height: pkg.heightFt };
+   // Priority 3: Any empty floor space (re-check with optimized search)
+for (const rot of rotations) {
+  // First try exact multiples (optimal packing)
+  for (let xMultiplier = 0; xMultiplier <= Math.floor(this.truck.usableLengthFt / rot.length); xMultiplier++) {
+    for (let yMultiplier = 0; yMultiplier <= Math.floor(this.truck.usableWidthFt / rot.width); yMultiplier++) {
+      const x = xMultiplier * rot.length;
+      const y = yMultiplier * rot.width;
+      if (this.canPlace(x, y, 0, rot.length, rot.width, pkg.heightFt)) {
+        return { x, y, z: 0, ...rot, height: pkg.heightFt };
+      }
     }
   }
-}
+
 
 // Then try with stepSize for remaining gaps
+const stepSize = 0.5;
 for (let x = 0; x <= this.truck.usableLengthFt - rot.length; x += stepSize) {
   for (let y = 0; y <= this.truck.usableWidthFt - rot.width; y += stepSize) {
     // Skip positions already checked in exact multiples

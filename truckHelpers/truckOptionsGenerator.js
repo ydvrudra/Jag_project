@@ -284,6 +284,12 @@ class TruckOptionsGenerator {
       }
     }
 
+    uniqueOptions.forEach(opt => {
+    // ✅ FIX 2: Dynamic currency symbol
+    const currencySymbol = this.getCurrencySymbol(opt.currency);
+   // console.log(`   Option ${opt.optionId}: ${opt.optionName} - ${currencySymbol}${opt.totalCost} (${opt.totalTrucks} trucks)`);
+  });
+
   return uniqueOptions; 
   }
 

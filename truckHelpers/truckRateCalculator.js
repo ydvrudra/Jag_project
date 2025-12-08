@@ -199,7 +199,7 @@ const defaultCurrencyId = 10;
 };
       
     } catch (error) {
-      console.error(`❌ Error calculating rate for truck ${vehicleId}:`, error);
+      console.error(` Error calculating rate for truck ${vehicleId}:`, error);
       return null;
     }
   }
