@@ -27,7 +27,6 @@ class TruckOptionsGenerator {
     if (currentAllocation && currentAllocation.allocations) {
       const currentOption = this.createOptionFromAllocation(
         currentAllocation,
-        "Algorithm Suggested",
         options.length + 1
       );
       
@@ -103,7 +102,7 @@ class TruckOptionsGenerator {
       }
 
       options.push({
-        optionName: `${optionName} - Most Economical`,
+        optionName: `${optionName}`,
         allocations,
         totalCost: truckRate * trucksNeeded,
         currency,
@@ -149,7 +148,7 @@ class TruckOptionsGenerator {
       const currency = allocationPlan.allocations[0]?.currency || 'INR';
       
       options.push({
-        optionName: `${optionName} - Balanced`,
+        optionName: `${optionName}`,
         allocations: allocationPlan.allocations,
         totalCost: allocationPlan.totalCost,
         currency,
@@ -191,8 +190,8 @@ class TruckOptionsGenerator {
       
       // Create option
       const optionName = trucksNeeded === 1 
-        ? `${truck.truckName} (High Capacity)`
-        : `${trucksNeeded} × ${truck.truckName} (High Capacity)`;
+        ? `${truck.truckName}`
+        : `${trucksNeeded} × ${truck.truckName}`;
 
       // Create allocations
       const allocations = [];
