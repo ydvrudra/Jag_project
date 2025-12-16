@@ -93,15 +93,15 @@ exports.fetchExchangeRates = async (req, res) => {
     const limitedRates = Object.entries(rates).slice(0, limit);
 
     for (let [toCurrency, rate] of limitedRates) {
-      // USD to Other
-      await pool.request()
-        .input('FromCurrency', sql.VarChar(3), base)
-        .input('ToCurrency', sql.VarChar(3), toCurrency)
-        .input('Rate', sql.Float, rate)
-        .query(`
-          INSERT INTO ExchangeRates (FromCurrency, ToCurrency, Rate, UpdatedAt)
-          VALUES (@FromCurrency, @ToCurrency, @Rate, GETDATE())
-        `);
+      // // USD to Other
+      // await pool.request()
+      //   .input('FromCurrency', sql.VarChar(3), base)
+      //   .input('ToCurrency', sql.VarChar(3), toCurrency)
+      //   .input('Rate', sql.Float, rate)
+      //   .query(`
+      //     INSERT INTO ExchangeRates (FromCurrency, ToCurrency, Rate, UpdatedAt)
+      //     VALUES (@FromCurrency, @ToCurrency, @Rate, GETDATE())
+      //   `);
 
       // Other to USD
       if (rate !== 0) {
