@@ -1,14 +1,13 @@
-// repositories/invoiceRepository.js
 const { sql, poolConnect } = require("../config/sqlConfig");
 const { parseAmount, cleanText, invoiceKey } = require("../helpers/common");
 
-// 👉 Helper: Convert to formatted string number
+// Helper: Convert to formatted string number
 function toStringNumber(value) {
   const num = parseAmount(value);
   return (typeof num === "number" && !isNaN(num)) ? num.toFixed(2) : "0.00";
 }
 
-// 👉 Helper: Get content from field object or backup row
+// Helper: Get content from field object or backup row
 function getContent(fieldObj, rowBackup, colName) {
   let val = fieldObj?.valueString ?? fieldObj?.content ?? rowBackup?.[colName] ?? null;
   if (val === null) return null;
@@ -16,12 +15,18 @@ function getContent(fieldObj, rowBackup, colName) {
   return val.toString().trim();
 }
 
-async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
+// ==============================================
+// MAIN FUNCTION: Write directly to MAIN tables
+// ==============================================
+async function writeToMainTables(dataArray, allRows, groupMap) {
   const pool = await poolConnect;
   const tx = new sql.Transaction(pool);
+  
   await tx.begin();
 
   try {
+    console.log(`💾 Starting database write for ${dataArray.length} invoices`);
+    
     for (const item of dataArray) {
       const doc = item.full_json?.documents?.[0] || {};
       const f = doc.fields || {};
@@ -30,9 +35,13 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
       const suppGst = f["SUPPLIER GST"]?.content || "";
       const key = invoiceKey(file, invNo, suppGst);
       const group = groupMap.get(key);
-      if (!group) continue;
+      
+      if (!group) {
+        console.warn(`⚠️ No group found for key: ${key}`);
+        continue;
+      }
 
-      // Calculate totals from allRows using row indexes
+      // Calculate totals from allRows
       let totalIGST = 0, totalSGST = 0, totalCGST = 0;
       group.rowIndexes.forEach(idx => {
         totalIGST += Number(allRows[idx]["IGST_AMOUNT"] || 0);
@@ -41,88 +50,89 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
       });
       const totalGST = totalIGST + totalSGST + totalCGST;
 
-      // Check if invoice already exists
-      const find = new sql.Request(tx);
-      find.input("invoice_number", sql.VarChar(100), invNo || null);
-      find.input("supplier_gst", sql.VarChar(32), suppGst || null);
-      find.input("filename", sql.VarChar(255), file || null);
+      // ====================================
+      // INSERT INTO INVOICESMAIN (MAIN TABLE)
+      // ====================================
+      const insertInvoice = new sql.Request(tx);
+      
+      // Set all input parameters
+      insertInvoice.input("filename", sql.VarChar(255), file || null);
+      insertInvoice.input("document_confidence", sql.Decimal(6, 3), doc.confidence ?? null);
+      insertInvoice.input("supplier_name", sql.VarChar(255), cleanText(f["SUPPLIER NAME"]?.content));
+      insertInvoice.input("invoice_number", sql.VarChar(100), invNo || null);
+      insertInvoice.input("invoice_date", sql.VarChar(50), f["INVOICE DATE"]?.content || null);
+      insertInvoice.input("supplier_gst", sql.VarChar(32), suppGst || null);
+      insertInvoice.input("supplier_address", sql.NVarChar(sql.MAX), cleanText(f["SUPPLIER ADDRESS"]?.content));
+      insertInvoice.input("bl_number", sql.VarChar(100), f["BL NUMBER"]?.content || null);
+      insertInvoice.input("total_igst", sql.VarChar(50), totalIGST.toFixed(2));
+      insertInvoice.input("total_sgst", sql.VarChar(50), totalSGST.toFixed(2));
+      insertInvoice.input("total_cgst", sql.VarChar(50), totalCGST.toFixed(2));
+      insertInvoice.input("total_gst", sql.VarChar(50), totalGST.toFixed(2));
+      insertInvoice.input("total_amount", sql.VarChar(50), toStringNumber(f["TOTAL AMOUNT"]?.valueString ?? f["TOTAL AMOUNT"]?.content));
+      insertInvoice.input("customer_gst", sql.VarChar(32), f["CUSTOMER GST"]?.content ?? null);
+      insertInvoice.input("customer_name", sql.VarChar(255), cleanText(f["CUSTOMER NAME"]?.content));
+      insertInvoice.input("customer_address", sql.NVarChar(sql.MAX), cleanText(f["CUSTOMER ADDRESS"]?.content));
+      
+      // Additional fields for main table (as per your table structure)
+      insertInvoice.input("kz_PageMasterId", sql.Int, 452); // Example - adjust as needed
+      insertInvoice.input("kz_UserId", sql.Int, 3); // Example - adjust as needed
+      insertInvoice.input("kz_CompanyId", sql.Int, 1);
+      insertInvoice.input("kz_LocationId", sql.Int, 1);
+      insertInvoice.input("kz_CreatedUserId", sql.Int, 3);
+      insertInvoice.input("kz_ModifiedUserId", sql.Int, null);
+      insertInvoice.input("kz_ModifiedCompanyId", sql.Int, 1);
+      insertInvoice.input("kz_ModifiedLocationId", sql.Int, 1);
+      insertInvoice.input("kz_IPAddress", sql.VarChar(50), "127.0.0.1");
+      insertInvoice.input("kz_SessionId", sql.VarChar(255), "nodejs-session");
+      insertInvoice.input("kz_PcName", sql.VarChar(255), "NODEJS-SERVER");
+      insertInvoice.input("kz_CreatedDateTime", sql.DateTime, new Date());
+      insertInvoice.input("kz_ModifiedDateTime", sql.DateTime, null);
 
-      const existing = await find.query(`
-        SELECT TOP 1 invoice_id FROM dbo.invoices
-        WHERE invoice_number=@invoice_number AND supplier_gst=@supplier_gst AND filename=@filename
+      // Execute insert into invoicesmain
+      const invoiceResult = await insertInvoice.query(`
+        INSERT INTO dbo.invoicesmain (
+          filename, document_confidence, supplier_name, invoice_number, invoice_date,
+          supplier_gst, supplier_address, bl_number, total_igst, total_sgst, total_cgst,
+          total_gst, total_amount, customer_gst, customer_name, customer_address,
+          created_datetime, kz_PageMasterId, kz_UserId, kz_CompanyId,
+          kz_LocationId, kz_CreatedUserId, kz_ModifiedUserId,
+          kz_ModifiedCompanyId, kz_ModifiedLocationId, kz_IPAddress,
+          kz_SessionId, kz_PcName, kz_CreatedDateTime, kz_ModifiedDateTime
+        )
+        VALUES (
+          @filename, @document_confidence, @supplier_name, @invoice_number, @invoice_date,
+          @supplier_gst, @supplier_address, @bl_number, @total_igst, @total_sgst, @total_cgst,
+          @total_gst, @total_amount, @customer_gst, @customer_name, @customer_address,
+          GETDATE(), @kz_PageMasterId, @kz_UserId, @kz_CompanyId,
+          @kz_LocationId, @kz_CreatedUserId, @kz_ModifiedUserId,
+          @kz_ModifiedCompanyId, @kz_ModifiedLocationId, @kz_IPAddress,
+          @kz_SessionId, @kz_PcName, @kz_CreatedDateTime, @kz_ModifiedDateTime
+        );
+        
+        SELECT SCOPE_IDENTITY() AS invoice_main_id;
       `);
-
-      let invoiceId;
-
-      if (existing.recordset.length) {
-        invoiceId = existing.recordset[0].invoice_id;
-        const upd = new sql.Request(tx);
-        upd.input("invoice_id", sql.Int, invoiceId);
-        upd.input("total_igst", sql.VarChar(50), totalIGST.toFixed(2));
-        upd.input("total_sgst", sql.VarChar(50), totalSGST.toFixed(2));
-        upd.input("total_cgst", sql.VarChar(50), totalCGST.toFixed(2));
-        upd.input("total_gst", sql.VarChar(50), totalGST.toFixed(2));
-
-        await upd.query(`
-          UPDATE dbo.invoices
-          SET total_igst=@total_igst,
-              total_sgst=@total_sgst,
-              total_cgst=@total_cgst,
-              total_gst=@total_gst
-          WHERE invoice_id=@invoice_id;
-        `);
-      } else {
-        const ins = new sql.Request(tx);
-        ins.input("filename", sql.VarChar(255), file || null);
-        ins.input("document_confidence", sql.Decimal(6, 3), doc.confidence ?? null);
-        ins.input("supplier_name", sql.VarChar(255), cleanText(f["SUPPLIER NAME"]?.content));
-        ins.input("invoice_number", sql.VarChar(100), invNo || null);
-        ins.input("invoice_date", sql.VarChar(50), f["INVOICE DATE"]?.content || null);
-        ins.input("supplier_gst", sql.VarChar(32), suppGst || null);
-        ins.input("supplier_address", sql.NVarChar(sql.MAX), cleanText(f["SUPPLIER ADDRESS"]?.content));
-        ins.input("bl_number", sql.VarChar(100), f["BL NUMBER"]?.content || null);
-        ins.input("total_igst", sql.VarChar(50), totalIGST.toFixed(2));
-        ins.input("total_sgst", sql.VarChar(50), totalSGST.toFixed(2));
-        ins.input("total_cgst", sql.VarChar(50), totalCGST.toFixed(2));
-        ins.input("total_gst", sql.VarChar(50), totalGST.toFixed(2));
-        ins.input("total_amount", sql.VarChar(50), toStringNumber(f["TOTAL AMOUNT"]?.valueString ?? f["TOTAL AMOUNT"]?.content));
-        ins.input("customer_gst", sql.VarChar(32), f["CUSTOMER GST"]?.content ?? null);
-        ins.input("customer_name", sql.VarChar(255), cleanText(f["CUSTOMER NAME"]?.content));
-        ins.input("customer_address", sql.NVarChar(sql.MAX), cleanText(f["CUSTOMER ADDRESS"]?.content));
-
-        const out = await ins.query(`
-          INSERT INTO dbo.invoices
-          (filename, document_confidence, supplier_name, invoice_number, invoice_date,
-           supplier_gst, supplier_address, bl_number, total_igst, total_sgst, total_cgst,
-           total_gst, total_amount, customer_gst, customer_name, customer_address)
-          OUTPUT INSERTED.invoice_id
-          VALUES (@filename, @document_confidence, @supplier_name, @invoice_number, @invoice_date,
-                  @supplier_gst, @supplier_address, @bl_number, @total_igst, @total_sgst, @total_cgst,
-                  @total_gst, @total_amount, @customer_gst, @customer_name, @customer_address);
-        `);
-        invoiceId = out.recordset[0].invoice_id;
-      }
-
-      // Attach invoice ID to all relevant rows
+      
+      const invoiceMainId = invoiceResult.recordset[0].invoice_main_id;
+      console.log(`✅ Inserted into invoicesmain, ID: ${invoiceMainId}`);
+      
+      // Attach invoice ID to rows for reference
       group.rowIndexes.forEach(idx => {
-        allRows[idx]["INVOICE ID"] = invoiceId;
+        allRows[idx]["INVOICE ID"] = invoiceMainId;
       });
 
-      // Delete old child rows
-      await new sql.Request(tx)
-        .input("invoice_id", sql.Int, invoiceId)
-        .query(`DELETE FROM dbo.invoicelineitems WHERE invoice_id=@invoice_id;`);
-
-      // Insert child line items
+      // ====================================
+      // INSERT LINE ITEMS INTO INVOICELINEITEMSMAIN
+      // ====================================
       const items = f["LineItems"]?.valueArray || [];
+      
       for (let i = 0; i < items.length; i++) {
         const line = items[i];
         const o = line.valueObject || {};
-        const idx = group.rowIndexes[i]; // matching row
+        const idx = group.rowIndexes[i];
         const rowBackup = allRows[idx] || {};
 
-        const insertPayload = {
-          invoice_id: invoiceId,
+        const lineItemPayload = {
+          invoice_main_id: invoiceMainId,
           size: getContent(o["SIZE"], rowBackup, "SIZE"),
           type: getContent(o["TYPE"], rowBackup, "TYPE"),
           charges_description: getContent(o["CHARGE_DESCRIPTION"], rowBackup, "CHARGE_DESCRIPTION"),
@@ -144,40 +154,76 @@ async function writeToSqlAndFillIds(dataArray, allRows, groupMap) {
           cgst_amount: toStringNumber(getContent(o["CGST_AMOUNT"], rowBackup, "CGST_AMOUNT")),
         };
 
-        const insChild = new sql.Request(tx);
-        insChild.input("invoice_id", sql.Int, invoiceId);
-        insChild.input("size", sql.VarChar(50), insertPayload.size);
-        insChild.input("type", sql.VarChar(50), insertPayload.type);
-        insChild.input("charges_description", sql.VarChar(255), insertPayload.charges_description);
-        insChild.input("hsn_sac", sql.VarChar(50), insertPayload.hsn_sac);
-        insChild.input("tax", sql.VarChar(20), insertPayload.tax);
-        insChild.input("based_on", sql.VarChar(50), insertPayload.based_on);
-        insChild.input("rate", sql.VarChar(50), insertPayload.rate);
-        insChild.input("currency", sql.VarChar(10), insertPayload.currency);
-        insChild.input("taxable_amount", sql.VarChar(50), insertPayload.taxable_amount);
-        insChild.input("igst_percent", sql.VarChar(50), insertPayload.igst_percent);
-        insChild.input("igst_amount", sql.VarChar(50), insertPayload.igst_amount);
-        insChild.input("sgst_percent", sql.VarChar(50), insertPayload.sgst_percent);
-        insChild.input("sgst_amount", sql.VarChar(50), insertPayload.sgst_amount);
-        insChild.input("cgst_percent", sql.VarChar(50), insertPayload.cgst_percent);
-        insChild.input("cgst_amount", sql.VarChar(50), insertPayload.cgst_amount);
+        const insertLineItem = new sql.Request(tx);
+        
+        // Set all parameters
+        Object.keys(lineItemPayload).forEach(key => {
+          const value = lineItemPayload[key];
+          if (key === "invoice_main_id") {
+            insertLineItem.input(key, sql.Int, value);
+          } else {
+            insertLineItem.input(key, sql.VarChar(sql.MAX), value || "");
+          }
+        });
+        
+        // Additional fields for main table
+        insertLineItem.input("invoicesId", sql.Int, 0); // Adjust as needed
+        insertLineItem.input("invoice_id", sql.Int, invoiceMainId);       
+        insertLineItem.input("invoicesmainId", sql.Int, invoiceMainId);
+        insertLineItem.input("kz_UserId", sql.Int, 3);
+        insertLineItem.input("kz_CompanyId", sql.Int, 1);
+        insertLineItem.input("kz_PageMasterId", sql.Int, 452);
+        insertLineItem.input("kz_LocationId", sql.Int, 1);
+        insertLineItem.input("Temp_EntryType", sql.Int, 1);
+        insertLineItem.input("kz_ModifiedUserId", sql.Int, null);
+        insertLineItem.input("kz_ModifiedCompanyId", sql.Int, 1);
+        insertLineItem.input("kz_ModifiedLocationId", sql.Int, 1);
+        insertLineItem.input("kz_CreatedUserId", sql.Int, 3);
+        insertLineItem.input("kz_ModifiedDateTime", sql.DateTime, null);
+        insertLineItem.input("lineitems_id", sql.Int, 0); // Adjust as needed
 
-        await insChild.query(`
-          INSERT INTO dbo.invoicelineitems
-          (invoice_id, size, type, charges_description, hsn_sac, tax, based_on, rate, currency, taxable_amount,
-           igst_percent, igst_amount, sgst_percent, sgst_amount, cgst_percent, cgst_amount)
-          VALUES (@invoice_id, @size, @type, @charges_description, @hsn_sac, @tax, @based_on, @rate, @currency, @taxable_amount,
-                  @igst_percent, @igst_amount, @sgst_percent, @sgst_amount, @cgst_percent, @cgst_amount);
+        await insertLineItem.query(`
+          INSERT INTO dbo.invoicelineitemsmain (
+            invoicemain_id, invoice_id,invoicesmainId,  size, type, charges_description, hsn_sac, tax,
+            based_on, rate, currency, taxable_amount,
+            igst_percent, igst_amount, sgst_percent, sgst_amount,
+            cgst_percent, cgst_amount,
+            invoicesId, kz_UserId, kz_CompanyId, kz_PageMasterId,
+            kz_LocationId, Temp_EntryType, kz_ModifiedUserId,
+            kz_ModifiedCompanyId, kz_ModifiedLocationId,
+            kz_CreatedUserId, kz_ModifiedDateTime,
+            lineitems_id
+          )
+          VALUES (
+            @invoice_main_id,  @invoice_main_id, @invoice_main_id, @size, @type, @charges_description, @hsn_sac, @tax,
+            @based_on, @rate, @currency, @taxable_amount,
+            @igst_percent, @igst_amount, @sgst_percent, @sgst_amount,
+            @cgst_percent, @cgst_amount,
+            @invoicesId, @kz_UserId, @kz_CompanyId, @kz_PageMasterId,
+            @kz_LocationId, @Temp_EntryType, @kz_ModifiedUserId,
+            @kz_ModifiedCompanyId, @kz_ModifiedLocationId,
+            @kz_CreatedUserId, @kz_ModifiedDateTime,
+            @lineitems_id
+          );
         `);
       }
+      
+      console.log(`✅ Inserted ${items.length} line items for invoice ID: ${invoiceMainId}`);
     }
 
     await tx.commit();
+    console.log("✅ Transaction committed successfully");
+    
+    return { success: true, message: `Inserted ${dataArray.length} invoices into main tables` };
+    
   } catch (err) {
-    console.error("Error in writeToSqlAndFillIds:", err);
+    console.error("❌ Error in writeToMainTables:", err);
     await tx.rollback();
     throw err;
   }
 }
 
-module.exports = { writeToSqlAndFillIds };
+// ==============================================
+// EXPORT THE NEW FUNCTION
+// ==============================================
+module.exports = { writeToMainTables };

@@ -3,7 +3,7 @@ const { parseAmount, parsePercent, getFirst } = require("../helpers/common");
 
 function mapLineItem(line) {
   const f = line.valueObject || {};
-  console.log("Raw fields:", f);
+  //console.log("Raw fields:", f);
 
 
   // Taxable value (CMA-CGM me "Taxable Amt." hai)
