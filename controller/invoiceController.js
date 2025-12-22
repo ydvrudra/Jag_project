@@ -123,7 +123,7 @@ exports.fetchExchangeRates = async (req, res) => {
   }
 };
 
-// controllers/truckController.js
+
 // const { pool, poolConnect, sql } = require('../config/sqlConfig');
 
 // async function suggestTruckForEnquiry(req, res) {

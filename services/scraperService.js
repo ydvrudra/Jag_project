@@ -7,7 +7,7 @@ const { uploadDir } = require("../config/constants");
 exports.scrapePdfLinks = async () => {
   const baseUrl = process.env.INVOICE_BASE_URL;
 
-  if (!baseUrl) throw new Error("INVOICE_BASE_URL is not set");
+  if (!baseUrl) throw new Error("INVOICE_BASE_URL is not");
 
   const html = await axios.get(baseUrl);
   const $ = cheerio.load(html.data);
@@ -23,6 +23,8 @@ exports.scrapePdfLinks = async () => {
       pdfLinks.push({ fullUrl, fileName, localPath });
     }
   });
+  console.log("All detected PDF links:", pdfLinks);
+
 
   return pdfLinks;
 };
