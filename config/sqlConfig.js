@@ -1,3 +1,4 @@
+//config/sqlConfig.js
 require("dotenv").config();
 const sql = require("mssql");
 

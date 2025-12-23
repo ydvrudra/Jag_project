@@ -6,7 +6,7 @@ const cma   = require("../vendors/cma");
 const maersk= require("../vendors/maersk");
 const msc   = require("../vendors/msc");
 
-const { writeToSqlAndFillIds } = require("../repositories/invoiceRepository");
+const { writeToMainTables  } = require("../repositories/invoiceRepository");
 const { writeExcel } = require("./excelWriter");
 
 const VENDOR_MAPPERS = {
@@ -102,7 +102,7 @@ async function saveToExcelAndDb(dataArray) {
   });
 
   // DB write (fills INVOICE ID back into rows)
-  await writeToSqlAndFillIds(dataArray, allRows, groupMap);
+  await writeToMainTables (dataArray, allRows, groupMap);
 
   // Excel write
   return writeExcel(allRows);

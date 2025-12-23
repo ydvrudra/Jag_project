@@ -1,53 +1,87 @@
-//services/invoiceProcessor
 const fs = require("fs");
-const axios = require("axios");
+const path = require("path");
 const { analyzeInvoiceWithAzure } = require("./azureService");
 const { uploadToFtp, deleteFromFtpAfterProcessing } = require("./ftpService");
 const { saveToExcel } = require("./excelhelper");
 
-
-exports.processInvoice = async (fullUrl, fileName, localPath) => {
+exports.processInvoice = async (filePath, fileName) => {
   try {
-    console.log(` Downloading: ${fileName}`);
-
-    // Download PDF
-    const writer = fs.createWriteStream(localPath);
-    const fileRes = await axios({ url: fullUrl, method: "GET", responseType: "stream" });
-
-    await new Promise((resolve, reject) => {
-      fileRes.data.pipe(writer);
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-    });
-
-    console.log(` Downloaded: ${fileName}`);
-
-    // Process with Azure
-    const result = await analyzeInvoiceWithAzure(localPath);
-    if (!result) throw new Error("Azure training failed");
-
-    result.file = fileName;
-
-    // Save result to Excel
-    saveToExcel([result]);
-
-    // FTP Upload + Cleanup
-    await uploadToFtp(localPath, fileName);
-    await deleteFromFtpAfterProcessing(fileName);
-
-    // Local file delete
-    try {
-      fs.unlinkSync(localPath);
-      console.log("🗑️ File deleted after processing.");
-    } catch (err) {
-      console.warn(" File deletion failed:", err.message);
+    console.log(`\n🚀 Starting processing: ${fileName}`);
+    
+    // 1. Verify file exists
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Downloaded file not found: ${filePath}`);
     }
-
-    // Return success
-    return { success: true };
-
+    
+    const stats = fs.statSync(filePath);
+    console.log(`📄 File size: ${stats.size} bytes`);
+    
+    if (stats.size === 0) {
+      throw new Error("File is empty");
+    }
+    
+    // 2. Process with Azure
+    console.log(`🤖 Sending to Azure for analysis...`);
+    const azureResult = await analyzeInvoiceWithAzure(filePath);
+    
+    if (!azureResult || !azureResult.full_json) {
+      throw new Error("Azure analysis failed");
+    }
+    
+    console.log(`✅ Azure analysis succeeded`);
+    
+    // 3. Save to DB and Excel
+    console.log(`💾 Saving to Excel and database...`);
+    const saveResult = await saveToExcel([{
+      file: fileName,
+      full_json: azureResult.full_json
+    }]);
+    
+    console.log(`✅ Database/Excel save completed`);
+    
+    // ✅ 4. FTP Operations (ONLY if DB save successful)
+    console.log(`📤 Uploading to FTP processed folder...`);
+    await uploadToFtp(filePath, fileName);
+    
+    console.log(`🗑️  Deleting from FTP upload folder...`);
+    await deleteFromFtpAfterProcessing(fileName);
+    
+    console.log(`✅ File moved to processed folder`);
+    
+    // 5. Cleanup local file
+    try {
+      fs.unlinkSync(filePath);
+      console.log(`🧹 Local temp file deleted`);
+    } catch (err) {
+      console.warn(`⚠️  Could not delete local file: ${err.message}`);
+    }
+    
+    console.log(`🎉 Processing completed successfully: ${fileName}`);
+    
+    return { 
+      success: true, 
+      fileName: fileName,
+      fileSize: stats.size,
+      dbInserted: true,
+      ftpDeleted: true
+    };
+    
   } catch (error) {
-    console.error(`Error processing invoice ${fileName}:`, error.message || error);
-    return { success: false, error };
+    console.error(`💥 Error processing invoice ${fileName}:`, error.message);
+    
+    // Cleanup local file on error
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (cleanupErr) {
+      console.warn(`⚠️  Could not cleanup temp file`);
+    }
+    
+    return { 
+      success: false, 
+      fileName: fileName,
+      error: error.message
+    };
   }
 };

@@ -1,64 +1,133 @@
 const nodemailer = require("nodemailer");
-const path = require("path");
 const fs = require("fs");
 
-async function sendInvoiceProcessingSummaryEmail({ successCount, failCount,successFiles,failFiles, attachmentPath, toEmail }) {
-  // 1. Transporter setup (SMTP ya Gmail)
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  // 2. Mail content
-  const mailOptions = {
-    from: `"Invoice Processing System" <${process.env.SMTP_USER}>`,
-    to: toEmail,
-    subject: "Invoice Processing Summary Report",
-    html: `
-      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
-        <h2 style="color: #004aad;">Invoice Processing Completed Successfully</h2>
-        <p>Dear User,</p>
-        <p>The invoice processing task has been completed. Please find below the summary:</p>
-           <p><strong>✅ Successfully Processed Invoices:</strong> ${successCount} invoices</p>
-           <ul>
-          ${successFiles.map(f => `<li><strong>${f}</strong></li>`).join("")}
-          </ul>
-          
-          <p><strong>❌ Failed Invoices:</strong> ${failCount} invoices</p>
-
-        ${failCount > 0 ? `
-          <p>The following invoices failed to process:</p>
-           <ul>
-           ${failFiles.map(f => `<li><strong>${f.fileName}</strong> - Error: ${f.error}</li>`).join("")}
-          </ul>
-        ` : `
-          <p>All invoices were processed successfully.</p>
-        `}
-        <p>Please find the attached Excel report for detailed information.</p>
-        <br/>
-        <p>Regards,<br/>Jag Software Team</p>
-      </div>
-    `,
-  };
-
-  // 3. Attach file if exists
-  if (attachmentPath && fs.existsSync(attachmentPath)) {
-    mailOptions.attachments = [
-      {
-        filename: path.basename(attachmentPath),
-        path: attachmentPath,
+async function sendInvoiceProcessingSummaryEmail({ 
+  successCount, 
+  failCount, 
+  successFiles, 
+  failFiles, 
+  attachmentPath, 
+  toEmail 
+}) {
+  try {
+    console.log("📧 Preparing email...");
+    
+    // Transporter setup
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT) || 465,
+      secure: process.env.SMTP_SECURE === "true" || true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
-    ];
-  }
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
 
-  // 4. Send mail
-  await transporter.sendMail(mailOptions);
-  console.log("Summary email sent successfully!");
+    // Verify connection
+    await transporter.verify();
+    console.log("✅ SMTP connection verified");
+
+    // Prepare HTML content for failed files
+    let failFilesHTML = '';
+    if (failCount > 0) {
+      failFilesHTML = `
+        <div style="background: #ffebee; padding: 15px; border-radius: 5px; margin: 15px 0;">
+          <h3 style="color: #c62828; margin-top: 0;">❌ Failed to Process: ${failCount} invoice(s)</h3>
+          <ul style="margin: 10px 0;">
+            ${failFiles.map(f => {
+              if (typeof f === 'string') {
+                return `<li><strong>${f}</strong></li>`;
+              } else if (f && f.fileName) {
+                return `<li><strong>${f.fileName}</strong> - Error: ${f.error || 'Unknown error'}</li>`;
+              }
+              return `<li>Unknown file</li>`;
+            }).join("")}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Mail options
+    const mailOptions = {
+      from: `"Invoice Processing System" <${process.env.SMTP_USER}>`,
+      to: toEmail || process.env.DEFAULT_EMAIL,
+      subject: `Invoice Processing Report - ${new Date().toLocaleDateString()}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; max-width: 600px; margin: 0 auto;">
+          <div style="background: #004aad; color: white; padding: 20px; border-radius: 5px 5px 0 0;">
+            <h2 style="margin: 0;">📊 Invoice Processing Summary</h2>
+          </div>
+          
+          <div style="padding: 20px; background: #f9f9f9; border: 1px solid #ddd;">
+            <p>Dear User,</p>
+            <p>The automated invoice processing has been completed. Below is the summary:</p>
+            
+            <div style="background: #e7f7e7; padding: 15px; border-radius: 5px; margin: 15px 0;">
+              <h3 style="color: #2e7d32; margin-top: 0;">✅ Successfully Processed: ${successCount} invoice(s)</h3>
+              ${successCount > 0 ? 
+                `<ul style="margin: 10px 0;">${successFiles.map(f => `<li><strong>${f}</strong></li>`).join("")}</ul>` : 
+                `<p>No invoices were successfully processed.</p>`}
+            </div>
+            
+            ${failFilesHTML}
+            
+            ${attachmentPath && fs.existsSync(attachmentPath) ? `
+              <p style="margin-top: 20px;">
+                <strong>📎 Attachment:</strong> Detailed Excel report is attached with this email.
+              </p>
+            ` : ''}
+            
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            
+            <p>
+              <strong>Processing Time:</strong> ${new Date().toLocaleString()}<br>
+              <strong>Total Files Attempted:</strong> ${successCount + failCount}
+            </p>
+            
+            <p>Regards,<br><strong>Invoice Processing System</strong><br>Jag Software</p>
+          </div>
+          
+          <div style="background: #f5f5f5; padding: 10px; text-align: center; font-size: 12px; color: #777; border-radius: 0 0 5px 5px;">
+            <p>This is an automated email. Please do not reply.</p>
+          </div>
+        </div>
+      `,
+    };
+
+    // Add attachment if exists
+    if (attachmentPath && fs.existsSync(attachmentPath)) {
+      const stats = fs.statSync(attachmentPath);
+      if (stats.size > 0) {
+        mailOptions.attachments = [{
+          filename: `Invoice_Report_${new Date().toISOString().split('T')[0]}.xlsx`,
+          path: attachmentPath,
+        }];
+        console.log(`✅ Attachment added: ${stats.size} bytes`);
+      } else {
+        console.log(`⚠️ Attachment file is empty`);
+      }
+    }
+
+    // Send email
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Email sent successfully!`);
+    
+    return { success: true, messageId: info.messageId };
+    
+  } catch (error) {
+    console.error("❌ Email sending failed:", error.message);
+    
+    if (error.code === 'EAUTH') {
+      console.error("🔐 Authentication failed. Check SMTP credentials.");
+    } else if (error.code === 'ECONNECTION') {
+      console.error("🌐 Connection failed.");
+    }
+    
+    throw error;
+  }
 }
 
 module.exports = { sendInvoiceProcessingSummaryEmail };

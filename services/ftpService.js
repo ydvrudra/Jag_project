@@ -1,5 +1,7 @@
 //services/ftpService
 const ftp = require("basic-ftp");
+const fs = require("fs"); // ADD THIS
+const path = require("path"); // ADD THIS
 
 async function uploadToFtp(localPath, fileName) {
   const client = new ftp.Client();
@@ -56,7 +58,47 @@ async function deleteFromFtpAfterProcessing(fileName) {
   }
 }
 
+
+// ✅ NEW DOWNLOAD FUNCTION (ADD BEFORE module.exports)
+async function downloadFromFtp(fileName) {
+  const client = new ftp.Client();
+  
+  // Create temp downloads folder
+  const tempDir = path.join(__dirname, '../temp_downloads');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  
+  const localPath = path.join(tempDir, fileName);
+  
+  try {
+    await client.access({
+      host: process.env.FTP_HOST,
+      user: process.env.FTP_USER,
+      password: process.env.FTP_PASSWORD,
+      secure: false,
+    });
+    
+    // FTP path where files are uploaded
+    const remotePath = `/public_html/UserData/Invoices/UploadInvoice/${fileName}`;
+    console.log(`⬇️  Downloading from FTP: ${remotePath}`);
+    
+    await client.downloadTo(localPath, remotePath);
+    
+    console.log(`✅ FTP Download successful: ${fileName}`);
+    return localPath;
+    
+  } catch (err) {
+    console.error(` FTP download error for ${fileName}:`, err.message);
+    throw err;
+  } finally {
+    client.close();
+  }
+}
+
+
 module.exports = {
   uploadToFtp,
   deleteFromFtpAfterProcessing,
+  downloadFromFtp  
 };

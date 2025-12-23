@@ -1,4 +1,4 @@
-//services/azureService
+//services/azureService.js
 const fs = require("fs");
 const axios = require("axios");
 const path = require("path");
@@ -63,7 +63,7 @@ async function analyzeInvoiceWithAzure(filePath) {
 
         if (status === "succeeded") {
           result = statusResponse.data.analyzeResult;
-          break;  // If succeeded, exit the loop
+          break;
         } else if (status === "failed") {
           console.warn(`Invoice processing failed, retrying...`);
         } else {
@@ -88,5 +88,5 @@ async function analyzeInvoiceWithAzure(filePath) {
   }
 }
 
-
+// ✅ SIRF EK FUNCTION EXPORT KARO
 module.exports = { analyzeInvoiceWithAzure };
