@@ -18,28 +18,36 @@ async function getInvoiceFilesFromDb() {
     const fileString = result.recordset[0].UploadInvoice;
     console.log('📋 Database filenames:', fileString);
     
-    const filenames = fileString.split(',')
+    // Split and clean filenames
+    const dbFilenames = fileString.split(',')
       .map(f => f.trim())
       .filter(f => f && f.toLowerCase().endsWith('.pdf'));
     
-    if (filenames.length === 0) {
-      console.log('📭 No PDF files found in database string');
+    if (dbFilenames.length === 0) {
+      console.log('📭 No PDF files found');
       return [];
     }
     
-    console.log('📄 Files from database:', filenames);
+    console.log('📄 Files from database:', dbFilenames);
     
-    // ✅ ENHANCED VALIDATION: Check already processed files
+    // 🟢 STEP 1: Extract ORIGINAL filenames (remove "1-", "2-" prefixes)
+    const originalFiles = dbFilenames.map(filename => {
+      // Remove "1-", "2-", "3-" prefixes
+      return filename.replace(/^[0-9]+-/, '');
+    });
+    
+    // Remove duplicates
+    const uniqueOriginalFiles = [...new Set(originalFiles)];
+    console.log('📄 Original filenames (without prefixes):', uniqueOriginalFiles);
+    
+    // 🟢 STEP 2: Check which files are already processed
     console.log('🔍 Checking already processed files...');
-    const processedFiles = [];
-
-    for (const filename of filenames) {
-      // Step 1: Extract original filename (remove "1-" prefix if exists)
-      const originalName = filename.replace(/^1-/, ''); // "WHLAHMEOD2505725.pdf"
-      
-      // Step 2: Check if ANY variation of this file is already processed
-      const checkResult = await pool.request()
-        .input('pattern', sql.VarChar, `%${originalName}%`)
+    const filesToProcess = [];
+    
+    for (const originalFile of uniqueOriginalFiles) {
+      // Check in invoicesmain table with ORIGINAL filename
+          const checkResult = await pool.request()
+        .input('pattern', sql.VarChar, `%${originalFile}%`)
         .query(`
           SELECT filename, invoicemain_id, created_datetime 
           FROM invoicesmain 
@@ -48,22 +56,22 @@ async function getInvoiceFilesFromDb() {
         `);
       
       if (checkResult.recordset.length > 0) {
-        console.log(`💰 SKIPPING - Already processed as: ${checkResult.recordset[0].filename}`);
+        console.log(`💰 SKIPPING - Already processed: ${originalFile}`);
         console.log(`   📅 Processed on: ${checkResult.recordset[0].created_datetime}`);
       } else {
-        processedFiles.push(filename);
-        console.log(`✅ To process: ${filename}`);
+        filesToProcess.push(originalFile);
+        console.log(`✅ To process: ${originalFile}`);
       }
     }
     
-    if (processedFiles.length === 0) {
+    if (filesToProcess.length === 0) {
       console.log('📭 All files already processed - NO AZURE CHARGE!');
       return [];
     }
     
-    console.log('📄 Files to download (not processed yet):', processedFiles);
+    console.log('📄 Files to process (original names):', filesToProcess);
     
-    // List files on FTP
+    // 🟢 STEP 3: Get files from FTP
     console.log('🔍 Listing files on FTP server...');
     const ftp = require('basic-ftp');
     const client = new ftp.Client();
@@ -77,78 +85,88 @@ async function getInvoiceFilesFromDb() {
     
     const ftpFiles = await client.list('/public_html/UserData/Invoices/UploadInvoice/');
     const ftpFileNames = ftpFiles.map(f => f.name);
-    console.log('📁 Files on FTP server:', ftpFileNames);
+    console.log('📁 Total files on FTP:', ftpFileNames.length);
+    
+    // Show recent files for debugging
+    console.log('📁 Recent FTP files:');
+    ftpFileNames.slice(-10).forEach(f => console.log(`   ${f}`));
     
     client.close();
     
-    // ✅ SMART MATCHING for procedure pattern: X-1-OriginalFile.pdf
-    const filesData = [];
+   // 🟢 STEP 4: Match and download files
+const filesData = [];
+
+for (const originalFile of filesToProcess) {
+  console.log(`\n🔍 Looking for: ${originalFile}`);
+  
+  const matchingFtpFiles = ftpFileNames.filter(ftpFile => {
+    return ftpFile.endsWith(originalFile);
+  });
+  
+  if (matchingFtpFiles.length > 0) {
+    console.log(`📁 Found ${matchingFtpFiles.length} matches:`, matchingFtpFiles);
     
-    for (const dbFilename of processedFiles) {
-      let actualFtpFilename = null;
+    // Check if ANY of these files is already processed
+    let alreadyProcessed = false;
+    let processedFileName = '';
+    
+    for (const ftpFile of matchingFtpFiles) {
+      const check = await pool.request()
+        .input('ftpFilename', sql.VarChar, ftpFile)
+        .query(`SELECT filename FROM invoicesmain WHERE filename = @ftpFilename`);
       
-      // Step 1: Get original filename (remove "1-" prefix)
-      const originalName = dbFilename.replace(/^1-/, ''); // "WHLAHMEOD2505725.pdf"
-      
-      console.log(`\n🔍 Matching: ${dbFilename} -> Original: ${originalName}`);
-      
-      // Step 2: Find ALL files matching pattern X-1-originalName
-      const matchingFiles = ftpFileNames.filter(ftpFile => {
-        // Check if ftpFile contains originalName AND follows X-1-originalName pattern
-        return ftpFile.includes(`-${originalName}`);
-      });
-      
-      if (matchingFiles.length > 0) {
-        console.log(`📁 Found ${matchingFiles.length} matches:`, matchingFiles);
-        
-        // Get the LATEST file (highest RecordId = most recent)
-        const getRecordId = (fname) => {
-          const match = fname.match(/^(\d+)-/);
-          return match ? parseInt(match[1]) : 0;
-        };
-        
-        matchingFiles.sort((a, b) => getRecordId(b) - getRecordId(a));
-        actualFtpFilename = matchingFiles[0];
-        
-        console.log(`✅ Selected latest: ${actualFtpFilename}`);
-        
-        // ✅ FINAL CHECK: Double verify not processed (safety net)
-        const finalCheck = await pool.request()
-          .input('ftpFilename', sql.VarChar, actualFtpFilename)
-          .query(`SELECT TOP 1 filename FROM invoicesmain WHERE filename = @ftpFilename`);
-        
-        if (finalCheck.recordset.length > 0) {
-          console.log(`⚠️  WARNING: ${actualFtpFilename} already in database! Skipping download.`);
-          continue; // Skip download completely
-        }
-        
-        try {
-          console.log(`🔄 Downloading: ${actualFtpFilename}`);
-          const localPath = await downloadFromFtp(actualFtpFilename);
-          
-          const stats = require('fs').statSync(localPath);
-          filesData.push({
-            dbFilename: dbFilename,
-            ftpFilename: actualFtpFilename,
-            filePath: localPath,
-            fileSize: stats.size,
-            originalName: originalName
-          });
-          
-          console.log(`✅ Added to queue: ${actualFtpFilename} (${stats.size} bytes)`);
-        } catch (err) {
-          console.error(`❌ Download failed:`, err.message);
-        }
-      } else {
-        console.log(`❌ No matching file found on FTP for: ${dbFilename}`);
-        console.log(`   Looking for pattern: X-1-${originalName}`);
+      if (check.recordset.length > 0) {
+        alreadyProcessed = true;
+        processedFileName = ftpFile;
+        break;
       }
     }
     
-    console.log(`\n📊 Total files ready for processing: ${filesData.length}`);
+    if (alreadyProcessed) {
+      console.log(`💰 Already processed: ${processedFileName}`);
+      continue; // Skip this file completely
+    }
+    
+    // Select the latest one (highest RecordId)
+    const getRecordId = (filename) => {
+      const match = filename.match(/^(\d+)-/);
+      return match ? parseInt(match[1]) : 0;
+    };
+    
+    matchingFtpFiles.sort((a, b) => getRecordId(b) - getRecordId(a));
+    const selectedFtpFile = matchingFtpFiles[0];
+    
+    console.log(`✅ Selected: ${selectedFtpFile}`);
+    
+    try {
+      console.log(`🔄 Downloading: ${selectedFtpFile}`);
+      const localPath = await downloadFromFtp(selectedFtpFile);
+      
+      const stats = require('fs').statSync(localPath);
+      filesData.push({
+        originalName: originalFile,
+        ftpFilename: selectedFtpFile,
+        filePath: localPath,
+        fileSize: stats.size
+      });
+      
+      console.log(`✅ Added to queue: ${originalFile} (${stats.size} bytes)`);
+    } catch (err) {
+      console.error(`❌ Download failed:`, err.message);
+    }
+  } else {
+    console.log(`❌ No matching file found on FTP for: ${originalFile}`);
+  }
+}
+    
+    console.log(`\n📊 Summary:`);
+    console.log(`   Database files: ${dbFilenames.length}`);
+    console.log(`   Original files: ${uniqueOriginalFiles.length}`);
+    console.log(`   To process: ${filesToProcess.length}`);
+    console.log(`   Ready for Azure: ${filesData.length}`);
     
     if (filesData.length === 0) {
-      console.log('💡 Tip: All matched files were already processed. No Azure charges incurred.');
+      console.log('💡 All files were either already processed or not found on FTP');
     }
     
     return filesData;

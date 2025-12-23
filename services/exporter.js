@@ -104,7 +104,6 @@ async function saveToExcelAndDb(dataArray) {
   // DB write (fills INVOICE ID back into rows)
   await writeToMainTables (dataArray, allRows, groupMap);
 
-  // Excel write
   return writeExcel(allRows);
 }
 

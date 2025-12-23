@@ -15,9 +15,27 @@ function getContent(fieldObj, rowBackup, colName) {
   return val.toString().trim();
 }
 
-// ==============================================
-// MAIN FUNCTION: Write directly to MAIN tables
-// ==============================================
+function normalizeCurrency(val) {
+  if (!val) return "";
+  const asString = val.toString().replace(/\s+/g, " ").trim();
+  if (!asString) return "";
+  const token = asString.split(" ")[0]; // pick first token (e.g., "INR")
+  return token.substring(0, 10); // enforce reasonable length
+}
+
+function cleanPercentValue(value) {
+  if (!value) return "0";
+  
+  const str = value.toString();
+  const clean = str
+    .replace(/[\r\n]+/g, ' ')      
+    .replace(/\s+/g, ' ')          
+    .trim();
+    
+  const numMatch = clean.match(/\d+(\.\d+)?/);
+  return numMatch ? numMatch[0] : "0";
+}
+
 async function writeToMainTables(dataArray, allRows, groupMap) {
   const pool = await poolConnect;
   const tx = new sql.Transaction(pool);
@@ -140,17 +158,17 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
           tax: getContent(o["TAX"], rowBackup, "TAX"),
           based_on: getContent(o["BASED ON"], rowBackup, "BASED ON"),
           rate: toStringNumber(getContent(o["RATE"], rowBackup, "RATE")),
-          currency: getContent(o["CURRENCY"], rowBackup, "CURRENCY"),
+          currency: normalizeCurrency(getContent(o["CURRENCY"], rowBackup, "CURRENCY")),
           taxable_amount: toStringNumber(
             getContent(o["TAXABLE_AMOUNT"], rowBackup, "TAXABLE_AMOUNT") ||
             getContent(o["TAXABLE AMOUNT"], rowBackup, "TAXABLE AMOUNT") ||
             getContent(o["AMOUNT"], rowBackup, "AMOUNT")
           ),
-          igst_percent: getContent(o["IGST%"], rowBackup, "IGST%"),
+           igst_percent: cleanPercentValue(getContent(o["IGST%"], rowBackup, "IGST%")),
           igst_amount: toStringNumber(getContent(o["IGST_AMOUNT"], rowBackup, "IGST_AMOUNT")),
-          sgst_percent: getContent(o["SGST%"], rowBackup, "SGST%"),
+         sgst_percent: cleanPercentValue(getContent(o["SGST%"], rowBackup, "SGST%")),
           sgst_amount: toStringNumber(getContent(o["SGST_AMOUNT"], rowBackup, "SGST_AMOUNT")),
-          cgst_percent: getContent(o["CGST%"], rowBackup, "CGST%"),
+          cgst_percent: cleanPercentValue(getContent(o["CGST%"], rowBackup, "CGST%")),
           cgst_amount: toStringNumber(getContent(o["CGST_AMOUNT"], rowBackup, "CGST_AMOUNT")),
         };
 
