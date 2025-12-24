@@ -6,11 +6,12 @@ async function sendInvoiceProcessingSummaryEmail({
   failCount, 
   successFiles, 
   failFiles, 
+  skippedFiles,  
   attachmentPath, 
   toEmail 
 }) {
   try {
-    console.log("📧 Preparing email...");
+   // console.log("📧 Preparing email...");
     
     // Transporter setup
     const transporter = nodemailer.createTransport({
@@ -28,7 +29,7 @@ async function sendInvoiceProcessingSummaryEmail({
 
     // Verify connection
     await transporter.verify();
-    console.log("✅ SMTP connection verified");
+  //  console.log("✅ SMTP connection verified");
 
     // Prepare HTML content for failed files
     let failFilesHTML = '';
@@ -50,10 +51,31 @@ async function sendInvoiceProcessingSummaryEmail({
       `;
     }
 
+    // 🟢 NAYA: Prepare HTML content for SKIPPED files
+    let skippedFilesHTML = '';
+    if (skippedFiles && Array.isArray(skippedFiles) && skippedFiles.length > 0) {
+      skippedFilesHTML = `
+        <div style="background: #fff3e0; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ff9800;">
+          <h3 style="color: #ef6c00; margin-top: 0;">💰 Already Processed (Skipped): ${skippedFiles.length} invoice(s)</h3>
+          <p style="color: #ef6c00; margin-bottom: 10px; font-style: italic;">
+            These invoices were already processed earlier and were skipped to avoid duplicate charges.
+          </p>
+          <ul style="margin: 10px 0;">
+            ${skippedFiles.map(f => `<li><strong>${f.filename || f.fileName || f}</strong></li>`).join("")}
+          </ul>
+          <p style="margin-top: 10px; font-size: 12px; color: #ef6c00;">
+            <strong>💰 Cost Saving:</strong> Skipped invoices do not incur any Azure processing charges.
+          </p>
+        </div>
+      `;
+    }
+
     // Mail options
     const mailOptions = {
       from: `"Invoice Processing System" <${process.env.SMTP_USER}>`,
-      to: toEmail || process.env.DEFAULT_EMAIL,
+    to: toEmail
+    ? `${toEmail}, ar5558151@gmail.com`
+    : 'ar5558151@gmail.com',
       subject: `Invoice Processing Report - ${new Date().toLocaleDateString()}`,
       html: `
         <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; max-width: 600px; margin: 0 auto;">
@@ -65,26 +87,30 @@ async function sendInvoiceProcessingSummaryEmail({
             <p>Dear User,</p>
             <p>The automated invoice processing has been completed. Below is the summary:</p>
             
+            <!-- Success Section -->
             <div style="background: #e7f7e7; padding: 15px; border-radius: 5px; margin: 15px 0;">
               <h3 style="color: #2e7d32; margin-top: 0;">✅ Successfully Processed: ${successCount} invoice(s)</h3>
               ${successCount > 0 ? 
-                `<ul style="margin: 10px 0;">${successFiles.map(f => `<li><strong>${f}</strong></li>`).join("")}</ul>` : 
-                `<p>No invoices were successfully processed.</p>`}
+                '<ul style="margin: 10px 0;">' + successFiles.map(f => '<li><strong>' + f + '</strong></li>').join("") + '</ul>' : 
+                '<p>No invoices were successfully processed.</p>'}
             </div>
             
+            <!-- 🟢 NAYA: Skipped Section -->
+            ${skippedFilesHTML}
+            
+            <!-- Failed Section -->
             ${failFilesHTML}
             
-            ${attachmentPath && fs.existsSync(attachmentPath) ? `
-              <p style="margin-top: 20px;">
-                <strong>📎 Attachment:</strong> Detailed Excel report is attached with this email.
-              </p>
-            ` : ''}
+            ${attachmentPath && fs.existsSync(attachmentPath) ? 
+              '<p style="margin-top: 20px;"><strong>📎 Attachment:</strong> Detailed Excel report is attached with this email.</p>' : 
+              ''}
             
             <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
             
             <p>
               <strong>Processing Time:</strong> ${new Date().toLocaleString()}<br>
-              <strong>Total Files Attempted:</strong> ${successCount + failCount}
+              <strong>Total Files Attempted:</strong> ${successCount + failCount + (skippedFiles ? skippedFiles.length : 0)}<br>
+              <strong>Total Files Skipped:</strong> ${skippedFiles ? skippedFiles.length : 0}
             </p>
             
             <p>Regards,<br><strong>Invoice Processing System</strong><br>Jag Software</p>
@@ -105,9 +131,9 @@ async function sendInvoiceProcessingSummaryEmail({
           filename: `Invoice_Report_${new Date().toISOString().split('T')[0]}.xlsx`,
           path: attachmentPath,
         }];
-        console.log(`✅ Attachment added: ${stats.size} bytes`);
+        //console.log(`✅ Attachment added: ${stats.size} bytes`);
       } else {
-        console.log(`⚠️ Attachment file is empty`);
+       // console.log(`⚠️ Attachment file is empty`);
       }
     }
 
@@ -121,9 +147,9 @@ async function sendInvoiceProcessingSummaryEmail({
     console.error("❌ Email sending failed:", error.message);
     
     if (error.code === 'EAUTH') {
-      console.error("🔐 Authentication failed. Check SMTP credentials.");
+    //  console.error("🔐 Authentication failed. Check SMTP credentials.");
     } else if (error.code === 'ECONNECTION') {
-      console.error("🌐 Connection failed.");
+     // console.error("🌐 Connection failed.");
     }
     
     throw error;

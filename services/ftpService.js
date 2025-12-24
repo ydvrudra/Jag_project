@@ -13,7 +13,7 @@ async function uploadToFtp(localPath, fileName) {
       secure: false,
     });
     await client.uploadFrom(localPath, `/public_html/UserData/Invoices/Processed_Invoices/${fileName}`);
-    console.log(`FTP Upload successful: ${fileName}`);
+    //console.log(`FTP Upload successful: ${fileName}`);
   } catch (err) {
     console.error(` FTP upload error for ${fileName}:`, err.message);
     throw err; // Let caller handle the error properly
@@ -34,7 +34,7 @@ async function deleteFromFtpAfterProcessing(fileName) {
 
     const decodedFileName = decodeURIComponent(fileName);
     const remotePath = `/public_html/UserData/Invoices/UploadInvoice/${decodedFileName}`;
-    console.log(` Attempting to delete FTP file: ${remotePath}`);
+    //console.log(` Attempting to delete FTP file: ${remotePath}`);
 
     // Small delay for FTP server reliability
     await new Promise((r) => setTimeout(r, 300));
@@ -45,10 +45,10 @@ async function deleteFromFtpAfterProcessing(fileName) {
     const stillThere = list.some((f) => f.name === decodedFileName);
 
     if (stillThere) {
-      console.error(` FTP delete failed, file still exists: ${decodedFileName}`);
+     // console.error(` FTP delete failed, file still exists: ${decodedFileName}`);
       throw new Error(`FTP delete failed for ${decodedFileName}`);
     } else {
-      console.log(` Successfully deleted FTP file: ${decodedFileName}`);
+     // console.log(` Successfully deleted FTP file: ${decodedFileName}`);
     }
   } catch (err) {
     console.error(` FTP delete error for ${fileName}:`, err.message);
@@ -81,11 +81,11 @@ async function downloadFromFtp(fileName) {
     
     // FTP path where files are uploaded
     const remotePath = `/public_html/UserData/Invoices/UploadInvoice/${fileName}`;
-    console.log(`⬇️  Downloading from FTP: ${remotePath}`);
+    //console.log(`⬇️  Downloading from FTP: ${remotePath}`);
     
     await client.downloadTo(localPath, remotePath);
     
-    console.log(`✅ FTP Download successful: ${fileName}`);
+   // console.log(`✅ FTP Download successful: ${fileName}`);
     return localPath;
     
   } catch (err) {

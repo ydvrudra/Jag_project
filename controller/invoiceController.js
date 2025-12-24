@@ -7,35 +7,28 @@ const { processInvoice } = require("../services/invoiceProcessor");
 const { sendInvoiceProcessingSummaryEmail } = require("../services/emailService");
 
 exports.processAllInvoices = async (req, res) => {
-  console.log("\n" + "=".repeat(50));
-  console.log("📨 API CALL: /process-all-invoices");
-  console.log("=".repeat(50));
   
   try {
     // 1. Get files from database via FTP
-    console.log("\n1️⃣  Fetching files from database...");
-    const filesData = await getInvoiceFilesFromDb();
-    
-    if (filesData.length === 0) {
-      console.log("📭 No files found to process");
-      return res.json({ 
-        status: "no_files",
-        message: "No invoice files found to process." 
-      });
+    //console.log("\n1️⃣  Fetching files from database...");
+    const result = await getInvoiceFilesFromDb();
+    const filesToProcess = result.filesToProcess || [];
+    const skippedFiles = result.skippedFiles || [];
+
+   if (filesToProcess.length === 0 && skippedFiles.length === 0) {
+     // console.log('📭 No files found to process');
+      return res.json({ status: "no_files", message: "No invoice files found." });
     }
-    
-    console.log(`✅ Found ${filesData.length} file(s) to process`);
-    
+      
     // 2. Process each file
     const results = [];
     const errors = [];
     const successFiles = [];
     const failFiles = [];
     
-    console.log("\n2️⃣  Processing files...");
     
-    for (const [index, fileData] of filesData.entries()) {
-      console.log(`\n--- Processing ${index + 1}/${filesData.length} ---`);
+    for (const [index, fileData] of filesToProcess.entries()) {
+      //console.log(`\n--- Processing ${index + 1}/${filesToProcess.length} ---`);
       
 try {
   const processResult = await processInvoice(fileData.filePath, fileData.ftpFilename);
@@ -51,14 +44,14 @@ try {
       ftpDeleted: processResult.ftpDeleted || false
     });
     successFiles.push(fileName);
-    console.log(`✅ Success: ${fileName}`);
+    //console.log(`✅ Success: ${fileName}`);
   } else {
     const errorMsg = processResult?.error || "Processing failed";
     throw new Error(errorMsg);
   }
 } catch (err) {
   const fileName = fileData.ftpFilename || fileData.dbFilename || 'Unknown';
-  console.error(`❌ Failed: ${fileName}`, err.message);
+  //console.error(`❌ Failed: ${fileName}`, err.message);
   errors.push({ 
     fileName: fileName, 
     error: err.message 
@@ -68,43 +61,42 @@ try {
     }
     
     // 3. Send summary email (with better error handling)
-console.log("\n3️⃣  Sending summary email...");
+//console.log("\n3️⃣  Sending summary email...");
 const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
 
 // Only send email if we have any results
-if ((results.length > 0 || errors.length > 0) && userEmail) {
-  try {
-    const emailResult = await sendInvoiceProcessingSummaryEmail({
-      successCount: results.length,
-      failCount: errors.length,
-      successFiles: results.map(r => r.fileName),
-      failFiles: errors, // Send full error objects
-      attachmentPath: extractedExcelFile,
-      toEmail: userEmail,
-    });
+if (userEmail) {
+      try {
+        const emailResult = await sendInvoiceProcessingSummaryEmail({
+          successCount: results.length,
+          failCount: errors.length,
+          successFiles: results.map(r => r.fileName),
+          failFiles: errors,
+          skippedFiles: skippedFiles, // 🟢 NAYA: Skip wali files pass karo
+          attachmentPath: extractedExcelFile,
+          toEmail: userEmail,
+        });
     
     console.log("📧 Summary email sent successfully");
   } catch (emailErr) {
     console.error("❌ Email send failed:", emailErr.message);
-    // Don't fail the whole process because of email error
-    console.log("⚠️  Continuing without email...");
   }
 } else {
   console.log("📭 No results to email or no email address provided");
 }
     
     // 4. Return response
-    console.log("\n" + "=".repeat(50));
-    console.log("📊 PROCESSING COMPLETE");
-    console.log(`✅ Successful: ${results.length}`);
-    console.log(`❌ Failed: ${errors.length}`);
-    console.log("=".repeat(50));
+    // console.log("\n" + "=".repeat(50));
+    // console.log("📊 PROCESSING COMPLETE");
+    // console.log(`✅ Successful: ${results.length}`);
+    // console.log(`❌ Failed: ${errors.length}`);
+    // console.log("=".repeat(50));
     
     res.json({
       status: "completed",
       processed: results.length,
       failed: errors.length,
-      totalFiles: filesData.length,
+      totalFiles: filesToProcess.length,
       details: { 
         success: results, 
         errors: errors 
@@ -112,7 +104,7 @@ if ((results.length > 0 || errors.length > 0) && userEmail) {
     });
     
   } catch (err) {
-    console.error("\n💥 MAIN PROCESSING ERROR:", err.message);
+    //console.error("\n💥 MAIN PROCESSING ERROR:", err.message);
     res.status(500).json({ 
       error: "Processing failed", 
       details: err.message 
@@ -127,7 +119,7 @@ exports.downloadExcelFile = (req, res) => {
 
   res.download(extractedExcelFile, "Invoices.xlsx", (err) => {
     if (err) {
-      console.error(" Excel download error:", err.message);
+     // console.error(" Excel download error:", err.message);
       res.status(500).json({ error: "Download failed." });
     }
   });

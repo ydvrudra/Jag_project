@@ -43,7 +43,7 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
   await tx.begin();
 
   try {
-    console.log(`💾 Starting database write for ${dataArray.length} invoices`);
+   // console.log(`💾 Starting database write for ${dataArray.length} invoices`);
     
     for (const item of dataArray) {
       const doc = item.full_json?.documents?.[0] || {};
@@ -55,7 +55,7 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
       const group = groupMap.get(key);
       
       if (!group) {
-        console.warn(`⚠️ No group found for key: ${key}`);
+        //console.warn(`⚠️ No group found for key: ${key}`);
         continue;
       }
 
@@ -131,7 +131,7 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
       `);
       
       const invoiceMainId = invoiceResult.recordset[0].invoice_main_id;
-      console.log(`✅ Inserted into invoicesmain, ID: ${invoiceMainId}`);
+     // console.log(`✅ Inserted into invoicesmain, ID: ${invoiceMainId}`);
       
       // Attach invoice ID to rows for reference
       group.rowIndexes.forEach(idx => {
@@ -226,11 +226,11 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
         `);
       }
       
-      console.log(`✅ Inserted ${items.length} line items for invoice ID: ${invoiceMainId}`);
+      //console.log(`✅ Inserted ${items.length} line items for invoice ID: ${invoiceMainId}`);
     }
 
     await tx.commit();
-    console.log("✅ Transaction committed successfully");
+   // console.log("✅ Transaction committed successfully");
     
     return { success: true, message: `Inserted ${dataArray.length} invoices into main tables` };
     

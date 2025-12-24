@@ -11,12 +11,12 @@ async function getInvoiceFilesFromDb() {
     `);
     
     if (result.recordset.length === 0) {
-      console.log('📭 No invoices found in database');
+     // console.log('📭 No invoices found in database');
       return [];
     }
     
     const fileString = result.recordset[0].UploadInvoice;
-    console.log('📋 Database filenames:', fileString);
+   // console.log('📋 Database filenames:', fileString);
     
     // Split and clean filenames
     const dbFilenames = fileString.split(',')
@@ -24,11 +24,11 @@ async function getInvoiceFilesFromDb() {
       .filter(f => f && f.toLowerCase().endsWith('.pdf'));
     
     if (dbFilenames.length === 0) {
-      console.log('📭 No PDF files found');
+   //   console.log('📭 No PDF files found');
       return [];
     }
     
-    console.log('📄 Files from database:', dbFilenames);
+   // console.log('📄 Files from database:', dbFilenames);
     
     // 🟢 STEP 1: Extract ORIGINAL filenames (remove "1-", "2-" prefixes)
     const originalFiles = dbFilenames.map(filename => {
@@ -38,11 +38,12 @@ async function getInvoiceFilesFromDb() {
     
     // Remove duplicates
     const uniqueOriginalFiles = [...new Set(originalFiles)];
-    console.log('📄 Original filenames (without prefixes):', uniqueOriginalFiles);
+   // console.log('📄 Original filenames (without prefixes):', uniqueOriginalFiles);
     
     // 🟢 STEP 2: Check which files are already processed
-    console.log('🔍 Checking already processed files...');
+   // console.log('🔍 Checking already processed files...');
     const filesToProcess = [];
+    const skippedFiles = [];
     
     for (const originalFile of uniqueOriginalFiles) {
       // Check in invoicesmain table with ORIGINAL filename
@@ -56,23 +57,30 @@ async function getInvoiceFilesFromDb() {
         `);
       
       if (checkResult.recordset.length > 0) {
-        console.log(`💰 SKIPPING - Already processed: ${originalFile}`);
-        console.log(`   📅 Processed on: ${checkResult.recordset[0].created_datetime}`);
+        skippedFiles.push({
+          filename: originalFile,
+          processedAs: checkResult.recordset[0].filename,
+          processedDate: checkResult.recordset[0].created_datetime,
+          reason: 'Already processed'
+        });
+       // console.log(`💰 SKIPPING - Already processed: ${originalFile}`);
+       // console.log(`   📅 Processed on: ${checkResult.recordset[0].created_datetime}`);
       } else {
         filesToProcess.push(originalFile);
-        console.log(`✅ To process: ${originalFile}`);
+       // console.log(`✅ To process: ${originalFile}`);
       }
     }
     
+    
     if (filesToProcess.length === 0) {
-      console.log('📭 All files already processed - NO AZURE CHARGE!');
+     // console.log('📭 All files already processed - NO AZURE CHARGE!');
       return [];
     }
     
-    console.log('📄 Files to process (original names):', filesToProcess);
+   // console.log('📄 Files to process (original names):', filesToProcess);
     
     // 🟢 STEP 3: Get files from FTP
-    console.log('🔍 Listing files on FTP server...');
+   // console.log('🔍 Listing files on FTP server...');
     const ftp = require('basic-ftp');
     const client = new ftp.Client();
     
@@ -85,10 +93,10 @@ async function getInvoiceFilesFromDb() {
     
     const ftpFiles = await client.list('/public_html/UserData/Invoices/UploadInvoice/');
     const ftpFileNames = ftpFiles.map(f => f.name);
-    console.log('📁 Total files on FTP:', ftpFileNames.length);
+   // console.log('📁 Total files on FTP:', ftpFileNames.length);
     
     // Show recent files for debugging
-    console.log('📁 Recent FTP files:');
+   // console.log('📁 Recent FTP files:');
     ftpFileNames.slice(-10).forEach(f => console.log(`   ${f}`));
     
     client.close();
@@ -97,14 +105,14 @@ async function getInvoiceFilesFromDb() {
 const filesData = [];
 
 for (const originalFile of filesToProcess) {
-  console.log(`\n🔍 Looking for: ${originalFile}`);
+ // console.log(`\n🔍 Looking for: ${originalFile}`);
   
   const matchingFtpFiles = ftpFileNames.filter(ftpFile => {
     return ftpFile.endsWith(originalFile);
   });
   
   if (matchingFtpFiles.length > 0) {
-    console.log(`📁 Found ${matchingFtpFiles.length} matches:`, matchingFtpFiles);
+   // console.log(`📁 Found ${matchingFtpFiles.length} matches:`, matchingFtpFiles);
     
     // Check if ANY of these files is already processed
     let alreadyProcessed = false;
@@ -150,7 +158,7 @@ for (const originalFile of filesToProcess) {
         fileSize: stats.size
       });
       
-      console.log(`✅ Added to queue: ${originalFile} (${stats.size} bytes)`);
+     // console.log(`✅ Added to queue: ${originalFile} (${stats.size} bytes)`);
     } catch (err) {
       console.error(`❌ Download failed:`, err.message);
     }
@@ -159,21 +167,24 @@ for (const originalFile of filesToProcess) {
   }
 }
     
-    console.log(`\n📊 Summary:`);
-    console.log(`   Database files: ${dbFilenames.length}`);
-    console.log(`   Original files: ${uniqueOriginalFiles.length}`);
-    console.log(`   To process: ${filesToProcess.length}`);
-    console.log(`   Ready for Azure: ${filesData.length}`);
+    // console.log(`\n📊 Summary:`);
+    // console.log(`   Database files: ${dbFilenames.length}`);
+    // console.log(`   Original files: ${uniqueOriginalFiles.length}`);
+    // console.log(`   To process: ${filesToProcess.length}`);
+    // console.log(`   Ready for Azure: ${filesData.length}`);
     
     if (filesData.length === 0) {
-      console.log('💡 All files were either already processed or not found on FTP');
+     // console.log('💡 All files were either already processed or not found on FTP');
     }
     
-    return filesData;
+    return {
+      filesToProcess: filesData, // Download & process karne wali
+      skippedFiles: skippedFiles // Skip hone wali
+    };
     
   } catch (err) {
     console.error('💥 Error:', err.message);
-    return [];
+    return { filesToProcess: [], skippedFiles: [] };
   }
 }
 
