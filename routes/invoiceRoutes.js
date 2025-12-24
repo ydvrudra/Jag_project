@@ -6,7 +6,7 @@ const {  processAllInvoices,downloadExcelFile,fetchExchangeRates} = require("../
 
 const router = express.Router();
 
-router.get("/process-all-invoices", verifyUser, processAllInvoices);
+router.get("/process-all-invoices", processAllInvoices);
 router.get("/download-excel",verifyUser, downloadExcelFile);
 //router.get("/fetch-exchange-rates", fetchExchangeRates);
 
