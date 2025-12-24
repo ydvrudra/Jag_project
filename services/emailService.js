@@ -17,7 +17,7 @@ async function sendInvoiceProcessingSummaryEmail({
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT) || 465,
-      secure: process.env.SMTP_SECURE === "true" || true,
+      secure: process.env.SMTP_SECURE === "true",
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -73,9 +73,7 @@ async function sendInvoiceProcessingSummaryEmail({
     // Mail options
     const mailOptions = {
       from: `"Invoice Processing System" <${process.env.SMTP_USER}>`,
-    to: toEmail
-    ? `${toEmail}, ar5558151@gmail.com`
-    : 'ar5558151@gmail.com',
+      to: toEmail || process.env.DEFAULT_EMAIL,
       subject: `Invoice Processing Report - ${new Date().toLocaleDateString()}`,
       html: `
         <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; max-width: 600px; margin: 0 auto;">
