@@ -16,7 +16,7 @@ async function sendInvoiceProcessingSummaryEmail({
     // Transporter setup
     const transporter = nodemailer.createTransport({
       host: "smtp.sendgrid.net",
-      port: parseInt(process.env.SMTP_PORT) || 587,
+      port: parseInt(process.env.SMTP_PORT) || 465,
       secure: false,
       auth: {
         user: process.env.SMTP_USER,
