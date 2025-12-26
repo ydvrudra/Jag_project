@@ -86,11 +86,11 @@ if (userEmail) {
 }
     
     // 4. Return response
-    // console.log("\n" + "=".repeat(50));
-    // console.log("📊 PROCESSING COMPLETE");
-    // console.log(`✅ Successful: ${results.length}`);
-    // console.log(`❌ Failed: ${errors.length}`);
-    // console.log("=".repeat(50));
+    console.log("\n" + "=".repeat(50));
+    console.log("📊 PROCESSING COMPLETE");
+    console.log(`✅ Successful: ${results.length}`);
+    console.log(`❌ Failed: ${errors.length}`);
+    console.log("=".repeat(50));
     
     res.json({
       status: "completed",

@@ -3,6 +3,11 @@ const fs = require("fs");
 const axios = require("axios");
 const path = require("path");
 
+function getModelIdFromFile(filePath) {
+  const name = path.basename(filePath).toLowerCase();
+  return "invoice_model_id"; 
+}
+
 async function callAzureWithRetry(fileData, apiUrl, headers) {
   let attempt = 1;
   while (true) {  
@@ -10,11 +15,11 @@ async function callAzureWithRetry(fileData, apiUrl, headers) {
       const res = await axios.post(apiUrl, fileData, { headers });
       return res;  
     } catch (err) {
-      //console.warn(`Azure POST attempt ${attempt} failed, retrying...`);
+      console.warn(`Azure POST attempt ${attempt} failed, retrying...`);
       attempt++;
 
       if (attempt > 10) { 
-       // console.error(`Azure POST failed after 10 attempts`);
+        console.error(`Azure POST failed after 10 attempts`);
         throw err;
       }
       await new Promise((r) => setTimeout(r, 1000));  
@@ -22,13 +27,12 @@ async function callAzureWithRetry(fileData, apiUrl, headers) {
   }
 }
 
-
 async function analyzeInvoiceWithAzure(filePath) {
- const modelId = process.env.AZURE_CUSTOM_MODEL_ID || "invoice_model_id"; 
+  const modelId = getModelIdFromFile(filePath);
   const apiUrl = `${process.env.AZURE_ENDPOINT}/formrecognizer/documentModels/${modelId}:analyze?api-version=2023-07-31`;
 
- // console.log(`Analyzing file: ${filePath}`);
- // console.log(`Using Azure model ID: ${modelId}`);
+  console.log(`Analyzing file: ${filePath}`);
+  console.log(`Using Azure model ID: ${modelId}`);
 
   const fileData = fs.readFileSync(filePath);
   const headers = {
@@ -46,11 +50,9 @@ async function analyzeInvoiceWithAzure(filePath) {
 
     let result = null;
     let tries = 0;
-    const startTime = Date.now(); 
-    const MAX_WAIT_TIME = 15000;
 
-    while (Date.now() - startTime < MAX_WAIT_TIME) { 
-      await new Promise((r) => setTimeout(r, 1000));
+    while (true) { 
+      await new Promise((r) => setTimeout(r, 3000));  
 
       try {
         const statusResponse = await axios.get(operationLocation, {
@@ -60,26 +62,18 @@ async function analyzeInvoiceWithAzure(filePath) {
         const status = statusResponse.data.status;
 
         if (status === "succeeded") {
-         result = statusResponse.data.analyzeResult;
+          result = statusResponse.data.analyzeResult;
           break;
         } else if (status === "failed") {
-          console.warn(`Invoice processing failed`);
-          tries++;
-          if (tries > 3) throw new Error("Azure failed 3 times");
+          console.warn(`Invoice processing failed, retrying...`);
         } else {
-          console.log(`⏳ Azure processing...`);
-          //console.log(`⏳ Azure analysis status: ${status} (Attempt ${tries + 1})`);
+          console.log(`⏳ Azure analysis status: ${status} (Attempt ${tries + 1})`);
         }
       } catch (err) {
-         console.warn(`Error checking Azure status: ${err.message}`);
-        tries++;
-        if (tries > 3) throw err;
+        console.warn(`Error checking Azure status: ${err.message}, retrying...`);
       }
-    }
 
-     // ✅ Check if timeout happened
-    if (!result && Date.now() - startTime >= MAX_WAIT_TIME) {
-      throw new Error("Azure timeout after 15 seconds");
+      tries++;
     }
 
     console.log("✅ Azure analysis succeeded");
@@ -93,4 +87,6 @@ async function analyzeInvoiceWithAzure(filePath) {
     return null;
   }
 }
+
+// ✅ SIRF EK FUNCTION EXPORT KARO
 module.exports = { analyzeInvoiceWithAzure };
