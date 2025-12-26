@@ -15,7 +15,7 @@ async function sendInvoiceProcessingSummaryEmail({
     
     // Transporter setup
     const transporter = nodemailer.createTransport({
-      host: "smtp.sendgrid.net",
+      host: "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT) || 465,
       secure: false,
       auth: {
@@ -69,7 +69,7 @@ async function sendInvoiceProcessingSummaryEmail({
 
     // Mail options
     const mailOptions = {
-      from: `"Invoice Processing System" <${process.env.FROM_EMAIL}>`,
+      from: `"Invoice Processing System" <${process.env.SMTP_USER}>`,
       to: toEmail || process.env.DEFAULT_EMAIL,
       subject: `Invoice Processing Report - ${new Date().toLocaleDateString()}`,
       html: `

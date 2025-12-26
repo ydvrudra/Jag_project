@@ -8,14 +8,14 @@ const sqlCfg = {
   server: process.env.SQLSERVER_SERVER,
   port: Number(process.env.SQLSERVER_PORT) || 1433,
   database: process.env.SQLSERVER_DATABASE,
-  connectionTimeout: 180000,
-  requestTimeout: 180000,
+  connectionTimeout: 300000,
+  requestTimeout: 300000,
   options: {
     encrypt: true,
     enableArithAbort: true,
     trustServerCertificate: true
   },
-  pool: { max: 5, min: 1, idleTimeoutMillis: 60000,  acquireTimeoutMillis: 90000 },
+  pool: { max: 10, min: 2, idleTimeoutMillis: 120000,  acquireTimeoutMillis: 180000 },
 };
 
 const pool = new sql.ConnectionPool(sqlCfg);
