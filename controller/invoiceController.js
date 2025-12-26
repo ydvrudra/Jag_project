@@ -64,25 +64,26 @@ try {
 //console.log("\n3️⃣  Sending summary email...");
 const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
 
-// Only send email if we have any results
-if (userEmail) {
-      try {
-        const emailResult = await sendInvoiceProcessingSummaryEmail({
-          successCount: results.length,
-          failCount: errors.length,
-          successFiles: results.map(r => r.fileName),
-          failFiles: errors,
-          skippedFiles: skippedFiles, // 🟢 NAYA: Skip wali files pass karo
-          attachmentPath: extractedExcelFile,
-          toEmail: userEmail,
-        });
-    
-    console.log("📧 Summary email sent successfully");
-  } catch (emailErr) {
-    console.error("❌ Email send failed:", emailErr.message);
-  }
+if (userEmail && (results.length > 0 || errors.length > 0)) {
+  console.log("📧 Queueing email for background sending...");
+  
+  // DON'T AWAIT - send in background
+  sendInvoiceProcessingSummaryEmail({
+    successCount: results.length,
+    failCount: errors.length,
+    successFiles: results.map(r => r.fileName),
+    failFiles: errors,
+    skippedFiles: skippedFiles,
+    attachmentPath: extractedExcelFile,
+    toEmail: userEmail,
+  }).then(() => {
+    console.log("✅ Email sent successfully (background)");
+  }).catch(err => {
+    console.log("⚠️ Background email failed:", err.message);
+  });
+  
 } else {
-  console.log("📭 No results to email or no email address provided");
+  console.log("📭 No results to email");
 }
     
     // 4. Return response
