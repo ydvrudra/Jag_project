@@ -1,4 +1,4 @@
-//controller/invoiceController.js
+//controller/invoiceController
 const { pool, poolConnect, sql } = require('../config/sqlConfig');
 const fs = require("fs");
 const { extractedExcelFile } = require("../config/constants");
@@ -6,112 +6,109 @@ const { getInvoiceFilesFromDb } = require("../services/databaseFileService");
 const { processInvoice } = require("../services/invoiceProcessor");
 const { sendInvoiceProcessingSummaryEmail } = require("../services/emailService");
 
-// ✅ BACKGROUND PROCESSING QUEUE
-let isProcessing = false;
-const pendingQueue = [];
-
-async function processQueueBackground() {
-  if (isProcessing) return;
-  
-  isProcessing = true;
-  
-  while (pendingQueue.length > 0) {
-    const job = pendingQueue.shift();
-    
-    try {
-      console.log(`🔄 Background processing started for ${job.filesToProcess.length} files`);
-      
-      const results = [];
-      const errors = [];
-      const successFiles = [];
-      const failFiles = [];
-      
-      // Process each file
-      for (const [index, fileData] of job.filesToProcess.entries()) {
-        try {
-          const processResult = await processInvoice(fileData.filePath, fileData.ftpFilename);
-          
-          if (processResult && processResult.success === true) {
-            const fileName = processResult.fileName || fileData.ftpFilename || 'Unknown';
-            results.push({ 
-              fileName: fileName, 
-              status: "success"
-            });
-            successFiles.push(fileName);
-          } else {
-            throw new Error(processResult?.error || "Processing failed");
-          }
-        } catch (err) {
-          const fileName = fileData.ftpFilename || 'Unknown';
-          errors.push({ fileName: fileName, error: err.message });
-          failFiles.push(fileName);
-        }
-      }
-      
-      // Send email if there are results
-      if (job.userEmail && (results.length > 0 || errors.length > 0)) {
-        try {
-          await sendInvoiceProcessingSummaryEmail({
-            successCount: results.length,
-            failCount: errors.length,
-            successFiles: results.map(r => r.fileName),
-            failFiles: errors,
-            skippedFiles: job.skippedFiles || [],
-            attachmentPath: extractedExcelFile,
-            toEmail: job.userEmail,
-          });
-          console.log("📧 Summary email sent successfully");
-        } catch (emailErr) {
-          console.error("❌ Email send failed:", emailErr.message);
-        }
-      }
-      
-      console.log(`✅ Background processing completed. Success: ${results.length}, Failed: ${errors.length}`);
-      
-    } catch (err) {
-      console.error("💥 Background processing error:", err.message);
-    }
-  }
-  
-  isProcessing = false;
-}
-
-// ✅ MAIN ENDPOINT - IMMEDIATE RESPONSE ONLY
 exports.processAllInvoices = async (req, res) => {
+  
   try {
-    // 1. Get files from database
+    // 1. Get files from database via FTP
+    //console.log("\n1️⃣  Fetching files from database...");
     const result = await getInvoiceFilesFromDb();
     const filesToProcess = result.filesToProcess || [];
     const skippedFiles = result.skippedFiles || [];
+
+   if (filesToProcess.length === 0 && skippedFiles.length === 0) {
+     // console.log('📭 No files found to process');
+      return res.json({ status: "no_files", message: "No invoice files found." });
+    }
+      
+    // 2. Process each file
+    const results = [];
+    const errors = [];
+    const successFiles = [];
+    const failFiles = [];
     
-    // 2. IMMEDIATE RESPONSE (2 seconds max)
-    res.json({ 
-      status: "queued", 
-      message: "Invoice processing started in background",
-      filesFound: filesToProcess.length,
-      skipped: skippedFiles.length,
-      queuedAt: new Date().toISOString()
+    
+    for (const [index, fileData] of filesToProcess.entries()) {
+      //console.log(`\n--- Processing ${index + 1}/${filesToProcess.length} ---`);
+      
+try {
+  const processResult = await processInvoice(fileData.filePath, fileData.ftpFilename);
+  
+  // ✅ FIX: Check if processResult exists
+  if (processResult && processResult.success === true) {
+    const fileName = processResult.fileName || fileData.ftpFilename || fileData.dbFilename || 'Unknown';
+    results.push({ 
+      fileName: fileName, 
+      status: "success",
+      fileSize: fileData.fileSize,
+      dbInserted: processResult.dbInserted || false,
+      ftpDeleted: processResult.ftpDeleted || false
     });
-    
-    // 3. If no files, return early
-    if (filesToProcess.length === 0 && skippedFiles.length === 0) {
-      console.log('📭 No files found to process');
-      return;
+    successFiles.push(fileName);
+    //console.log(`✅ Success: ${fileName}`);
+  } else {
+    const errorMsg = processResult?.error || "Processing failed";
+    throw new Error(errorMsg);
+  }
+} catch (err) {
+  const fileName = fileData.ftpFilename || fileData.dbFilename || 'Unknown';
+  //console.error(`❌ Failed: ${fileName}`, err.message);
+  errors.push({ 
+    fileName: fileName, 
+    error: err.message 
+  });
+  failFiles.push(fileName);
+}
     }
     
-    // 4. Add job to background queue
-    pendingQueue.push({
-      filesToProcess,
-      skippedFiles,
-      userEmail: req.headers["email"] || process.env.DEFAULT_EMAIL
+    // 3. Send summary email (with better error handling)
+//console.log("\n3️⃣  Sending summary email...");
+const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
+
+// Only send email if we have any results
+if (userEmail) {
+      try {
+        const emailResult = await sendInvoiceProcessingSummaryEmail({
+          successCount: results.length,
+          failCount: errors.length,
+          successFiles: results.map(r => r.fileName),
+          failFiles: errors,
+          skippedFiles: skippedFiles, // 🟢 NAYA: Skip wali files pass karo
+          attachmentPath: extractedExcelFile,
+          toEmail: userEmail,
+        });
+    
+    console.log("📧 Summary email sent successfully");
+  } catch (emailErr) {
+    console.error("❌ Email send failed:", emailErr.message);
+  }
+} else {
+  console.log("📭 No results to email or no email address provided");
+}
+    
+    // 4. Return response
+    // console.log("\n" + "=".repeat(50));
+    // console.log("📊 PROCESSING COMPLETE");
+    // console.log(`✅ Successful: ${results.length}`);
+    // console.log(`❌ Failed: ${errors.length}`);
+    // console.log("=".repeat(50));
+    
+    res.json({
+      status: "completed",
+      processed: results.length,
+      failed: errors.length,
+      totalFiles: filesToProcess.length,
+      details: { 
+        success: results, 
+        errors: errors 
+      },
     });
     
-    // 5. Start background processing (5 second delay)
-    setTimeout(processQueueBackground, 5000);
-    
   } catch (err) {
-    // Only log error, response already sent
-    console.error("Error in processAllInvoices:", err.message);
+    //console.error("\n💥 MAIN PROCESSING ERROR:", err.message);
+    res.status(500).json({ 
+      error: "Processing failed", 
+      details: err.message 
+    });
   }
 };
 
@@ -169,3 +166,7 @@ exports.fetchExchangeRates = async (req, res) => {
     res.status(500).json({ message: 'Error fetching exchange rates', error: error.message });
   }
 };
+
+
+
+
