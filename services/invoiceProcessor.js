@@ -21,8 +21,9 @@ exports.processInvoice = async (filePath, fileName) => {
     }
     
     // 2. Process with Azure
-   // console.log(`🤖 Sending to Azure for analysis...`);
+    console.time('Azure Processing');
     const azureResult = await analyzeInvoiceWithAzure(filePath);
+    console.timeEnd('Azure Processing');
     
     if (!azureResult || !azureResult.full_json) {
       throw new Error("Azure analysis failed");

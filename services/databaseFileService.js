@@ -1,3 +1,4 @@
+//services/databaseFileService
 const { pool, sql } = require('../config/sqlConfig');
 const { downloadFromFtp } = require('./ftpService');
 
@@ -42,34 +43,60 @@ async function getInvoiceFilesFromDb() {
     
     // 🟢 STEP 2: Check which files are already processed
    // console.log('🔍 Checking already processed files...');
-    const filesToProcess = [];
-    const skippedFiles = [];
-    
-    for (const originalFile of uniqueOriginalFiles) {
-      // Check in invoicesmain table with ORIGINAL filename
-          const checkResult = await pool.request()
-        .input('pattern', sql.VarChar, `%${originalFile}%`)
-        .query(`
-          SELECT filename, invoicemain_id, created_datetime 
-          FROM invoicesmain 
-          WHERE filename LIKE @pattern
-          ORDER BY created_datetime DESC
-        `);
-      
-      if (checkResult.recordset.length > 0) {
-        skippedFiles.push({
-          filename: originalFile,
-          processedAs: checkResult.recordset[0].filename,
-          processedDate: checkResult.recordset[0].created_datetime,
-          reason: 'Already processed'
-        });
-       // console.log(`💰 SKIPPING - Already processed: ${originalFile}`);
-       // console.log(`   📅 Processed on: ${checkResult.recordset[0].created_datetime}`);
-      } else {
-        filesToProcess.push(originalFile);
-       // console.log(`✅ To process: ${originalFile}`);
-      }
+const checkRequest = pool.request();
+
+// Placeholders banaye: @file0, @file1, @file2...
+uniqueOriginalFiles.forEach((file, index) => {
+  checkRequest.input(`file${index}`, sql.VarChar, `%${file}%`);
+});
+
+// Single query with OR conditions
+const checkQuery = `
+  SELECT filename, invoicemain_id, created_datetime 
+  FROM invoicesmain 
+  WHERE ${uniqueOriginalFiles.map((_, i) => `filename LIKE @file${i}`).join(' OR ')}
+  ORDER BY created_datetime DESC
+`;
+
+const checkResult = await checkRequest.query(checkQuery);
+
+// 2. PROCESSED FILES KA SET BANAO
+const processedFiles = new Set();
+const processedDetails = {};
+
+checkResult.recordset.forEach(row => {
+  processedFiles.add(row.filename);
+  processedDetails[row.filename] = {
+    processedDate: row.created_datetime,
+    invoiceId: row.invoicemain_id
+  };
+});
+
+// 3. SEPARATE PROCESSED AND NEW FILES
+const filesToProcess = [];
+const skippedFiles = [];
+
+for (const originalFile of uniqueOriginalFiles) {
+  let isProcessed = false;
+  
+  // Check if this file is in processed set
+  for (const processedFile of processedFiles) {
+    if (processedFile.includes(originalFile)) {
+      isProcessed = true;
+      skippedFiles.push({
+        filename: originalFile,
+        processedAs: processedFile,
+        processedDate: processedDetails[processedFile]?.processedDate,
+        reason: 'Already processed'
+      });
+      break;
     }
+  }
+  
+  if (!isProcessed) {
+    filesToProcess.push(originalFile);
+  }
+}
     
     
     if (filesToProcess.length === 0) {
@@ -115,20 +142,28 @@ for (const originalFile of filesToProcess) {
    // console.log(`📁 Found ${matchingFtpFiles.length} matches:`, matchingFtpFiles);
     
     // Check if ANY of these files is already processed
-    let alreadyProcessed = false;
-    let processedFileName = '';
-    
-    for (const ftpFile of matchingFtpFiles) {
-      const check = await pool.request()
-        .input('ftpFilename', sql.VarChar, ftpFile)
-        .query(`SELECT filename FROM invoicesmain WHERE filename = @ftpFilename`);
-      
-      if (check.recordset.length > 0) {
-        alreadyProcessed = true;
-        processedFileName = ftpFile;
-        break;
-      }
-    }
+   let alreadyProcessed = false;
+   let processedFileName = '';
+
+if (matchingFtpFiles.length > 0) {
+  // EK HI QUERY MEIN SAB CHECK KARO
+  const ftpCheckRequest = pool.request();
+  matchingFtpFiles.forEach((ftpFile, index) => {
+    ftpCheckRequest.input(`ftpFile${index}`, sql.VarChar, ftpFile);
+  });
+  
+  const ftpCheckQuery = `
+    SELECT filename FROM invoicesmain 
+    WHERE filename IN (${matchingFtpFiles.map((_, i) => `@ftpFile${i}`).join(', ')})
+  `;
+  
+  const ftpCheckResult = await ftpCheckRequest.query(ftpCheckQuery);
+  
+  if (ftpCheckResult.recordset.length > 0) {
+    alreadyProcessed = true;
+    processedFileName = ftpCheckResult.recordset[0].filename;
+  }
+}
     
     if (alreadyProcessed) {
       console.log(`💰 Already processed: ${processedFileName}`);
@@ -149,6 +184,7 @@ for (const originalFile of filesToProcess) {
     try {
       console.log(`🔄 Downloading: ${selectedFtpFile}`);
       const localPath = await downloadFromFtp(selectedFtpFile);
+      console.timeEnd('FTP Download');
       
       const stats = require('fs').statSync(localPath);
       filesData.push({

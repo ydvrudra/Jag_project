@@ -1,3 +1,4 @@
+//repositories/invoiceRepository
 const { sql, poolConnect } = require("../config/sqlConfig");
 const { parseAmount, cleanText, invoiceKey } = require("../helpers/common");
 
@@ -19,8 +20,8 @@ function normalizeCurrency(val) {
   if (!val) return "";
   const asString = val.toString().replace(/\s+/g, " ").trim();
   if (!asString) return "";
-  const token = asString.split(" ")[0]; // pick first token (e.g., "INR")
-  return token.substring(0, 10); // enforce reasonable length
+  const token = asString.split(" ")[0]; 
+  return token.substring(0, 10); 
 }
 
 function cleanPercentValue(value) {
@@ -68,9 +69,6 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
       });
       const totalGST = totalIGST + totalSGST + totalCGST;
 
-      // ====================================
-      // INSERT INTO INVOICESMAIN (MAIN TABLE)
-      // ====================================
       const insertInvoice = new sql.Request(tx);
       
       // Set all input parameters
@@ -138,9 +136,6 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
         allRows[idx]["INVOICE ID"] = invoiceMainId;
       });
 
-      // ====================================
-      // INSERT LINE ITEMS INTO INVOICELINEITEMSMAIN
-      // ====================================
       const items = f["LineItems"]?.valueArray || [];
       
       for (let i = 0; i < items.length; i++) {
@@ -240,8 +235,4 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
     throw err;
   }
 }
-
-// ==============================================
-// EXPORT THE NEW FUNCTION
-// ==============================================
 module.exports = { writeToMainTables };
