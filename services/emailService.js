@@ -16,7 +16,7 @@ async function sendInvoiceProcessingSummaryEmail({
     // Transporter setup
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
-      port: parseInt(process.env.SMTP_PORT) || 465,
+      port: parseInt(process.env.SMTP_PORT) || 587,
       secure: false,
       auth: {
         user: process.env.SMTP_USER,
