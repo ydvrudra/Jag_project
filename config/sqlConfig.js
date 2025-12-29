@@ -22,7 +22,7 @@ const pool = new sql.ConnectionPool(sqlCfg);
 const poolConnect = pool.connect();
 
 poolConnect.then(() => {
-  console.log('✅ Database connected successfully');
+  console.log(' Database connected successfully');
 }).catch(err => {
   console.error('❌ Database connection failed:', err.message);
 });

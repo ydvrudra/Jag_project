@@ -14,12 +14,12 @@ const VENDOR_MAPPERS = {
   cma: cma.mapLineItem,
   maersk: maersk.mapLineItem,
   msc: msc.mapLineItem,
-  generic: cma.mapLineItem, // generic fallback (percent/amount style)
+  generic: cma.mapLineItem, 
 };
 
 async function saveToExcelAndDb(dataArray) {
   const allRows = [];
-  const groupMap = new Map(); // key -> { parentRowIndex, rowIndexes[] }
+  const groupMap = new Map(); 
 
   dataArray.forEach((item) => {
     const doc = item.full_json?.documents?.[0] || {};
@@ -101,7 +101,6 @@ async function saveToExcelAndDb(dataArray) {
     }
   });
 
-  // DB write (fills INVOICE ID back into rows)
   await writeToMainTables (dataArray, allRows, groupMap);
 
   return writeExcel(allRows);

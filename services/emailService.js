@@ -128,7 +128,7 @@ async function sendInvoiceProcessingSummaryEmail({
         }];
         //console.log(`✅ Attachment added: ${stats.size} bytes`);
       } else {
-       // console.log(`⚠️ Attachment file is empty`);
+       // console.log(` Attachment file is empty`);
       }
     }
 
@@ -142,9 +142,9 @@ async function sendInvoiceProcessingSummaryEmail({
     console.error("❌ Email sending failed:", error.message);
     
     if (error.code === 'EAUTH') {
-    //  console.error("🔐 Authentication failed. Check SMTP credentials.");
+    //  console.error(" Authentication failed. Check SMTP credentials.");
     } else if (error.code === 'ECONNECTION') {
-     // console.error("🌐 Connection failed.");
+     // console.error(" Connection failed.");
     }
     
     throw error;

@@ -19,7 +19,6 @@ async function getInvoiceFilesFromDb() {
     const fileString = result.recordset[0].UploadInvoice;
    // console.log('📋 Database filenames:', fileString);
     
-    // Split and clean filenames
     const dbFilenames = fileString.split(',')
       .map(f => f.trim())
       .filter(f => f && f.toLowerCase().endsWith('.pdf'));
@@ -33,7 +32,6 @@ async function getInvoiceFilesFromDb() {
     
     // 🟢 STEP 1: Extract ORIGINAL filenames (remove "1-", "2-" prefixes)
     const originalFiles = dbFilenames.map(filename => {
-      // Remove "1-", "2-", "3-" prefixes
       return filename.replace(/^[0-9]+-/, '');
     });
     
@@ -96,7 +94,6 @@ async function getInvoiceFilesFromDb() {
     const ftpFileNames = ftpFiles.map(f => f.name);
    // console.log('📁 Total files on FTP:', ftpFileNames.length);
     
-    // Show recent files for debugging
    // console.log('📁 Recent FTP files:');
     ftpFileNames.slice(-10).forEach(f => console.log(`   ${f}`));
     
@@ -167,7 +164,6 @@ for (const originalFile of filesToProcess) {
     console.log(`❌ No matching file found on FTP for: ${originalFile}`);
   }
 }
-    
     // console.log(`\n📊 Summary:`);
     // console.log(`   Database files: ${dbFilenames.length}`);
     // console.log(`   Original files: ${uniqueOriginalFiles.length}`);
@@ -179,8 +175,8 @@ for (const originalFile of filesToProcess) {
     }
     
     return {
-      filesToProcess: filesData, // Download & process karne wali
-      skippedFiles: skippedFiles // Skip hone wali
+      filesToProcess: filesData, 
+      skippedFiles: skippedFiles 
     };
     
   } catch (err) {

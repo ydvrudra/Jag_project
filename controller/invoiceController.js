@@ -10,7 +10,7 @@ exports.processAllInvoices = async (req, res) => {
   
   try {
     // 1. Get files from database via FTP
-    //console.log("\n1️⃣  Fetching files from database...");
+    //console.log("\n1️  Fetching files from database...");
     const result = await getInvoiceFilesFromDb();
     const filesToProcess = result.filesToProcess || [];
     const skippedFiles = result.skippedFiles || [];
@@ -79,7 +79,7 @@ if (userEmail && (results.length > 0 || errors.length > 0)) {
   }).then(() => {
     console.log("✅ Email sent successfully (background)");
   }).catch(err => {
-    console.log("⚠️ Background email failed:", err.message);
+    console.log(" Background email failed:", err.message);
   });
   
 } else {
@@ -88,8 +88,8 @@ if (userEmail && (results.length > 0 || errors.length > 0)) {
     
     // 4. Return response
     console.log("\n" + "=".repeat(50));
-    console.log("📊 PROCESSING COMPLETE");
-    console.log(`✅ Successful: ${results.length}`);
+    console.log(" PROCESSING COMPLETE");
+    console.log(` Successful: ${results.length}`);
     console.log(`❌ Failed: ${errors.length}`);
     console.log("=".repeat(50));
     
