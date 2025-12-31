@@ -1,3 +1,4 @@
+//middleware//authMiddleware
 const { pool, poolConnect, sql } = require('../config/sqlConfig');
 
 async function verifyUser(req, res, next) {

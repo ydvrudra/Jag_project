@@ -64,7 +64,7 @@ try {
 //console.log("\n3️⃣  Sending summary email...");
 const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
 
-if (userEmail && (results.length > 0 || errors.length > 0)) {
+if (userEmail && (results.length > 0 || errors.length > 0 || skippedFiles.length > 0)) {
   console.log("📧 Queueing email for background sending...");
   
   // DON'T AWAIT - send in background
