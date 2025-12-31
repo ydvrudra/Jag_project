@@ -101,9 +101,10 @@ async function saveToExcelAndDb(dataArray) {
     }
   });
 
+  // DB write (fills INVOICE ID back into rows)
   await writeToMainTables (dataArray, allRows, groupMap);
 
-  return writeExcel(allRows);
-}
+  return writeExcel(allRows); 
+} 
 
 module.exports = { saveToExcelAndDb };
