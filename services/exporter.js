@@ -17,7 +17,9 @@ const VENDOR_MAPPERS = {
   generic: cma.mapLineItem, 
 };
 
-async function saveToExcelAndDb(dataArray) {
+async function saveToExcelAndDb(dataArray,recordId) {
+    console.log("🔍 DEBUG - Exporter recordId:", recordId);
+
   const allRows = [];
   const groupMap = new Map(); 
 
@@ -102,7 +104,7 @@ async function saveToExcelAndDb(dataArray) {
   });
 
   // DB write (fills INVOICE ID back into rows)
-  await writeToMainTables (dataArray, allRows, groupMap);
+  await writeToMainTables (dataArray, allRows, groupMap, recordId);
 
   return writeExcel(allRows); 
 } 

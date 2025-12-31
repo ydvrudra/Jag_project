@@ -4,7 +4,7 @@ const { analyzeInvoiceWithAzure } = require("./azureService");
 const { uploadToFtp, deleteFromFtpAfterProcessing } = require("./ftpService");
 const { saveToExcel } = require("./excelhelper");
 
-exports.processInvoice = async (filePath, fileName) => {
+exports.processInvoice = async (filePath, fileName,recordId) => {
   try {
    // console.log(`\n🚀 Starting processing: ${fileName}`);
     
@@ -36,7 +36,7 @@ exports.processInvoice = async (filePath, fileName) => {
     const saveResult = await saveToExcel([{
       file: fileName,
       full_json: azureResult.full_json
-    }]);
+    }], recordId);
     
     console.log(`✅ Database/Excel save completed`);
     

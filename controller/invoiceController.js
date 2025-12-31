@@ -11,7 +11,16 @@ exports.processAllInvoices = async (req, res) => {
   try {
     // 1. Get files from database via FTP
     //console.log("\n1️  Fetching files from database...");
-    const result = await getInvoiceFilesFromDb();
+
+    const recordId = req.headers["record-id"] || req.query.recordId || 0;
+    
+    if (!recordId || recordId === 0) {
+      return res.status(400).json({ 
+        error: "Record ID is required in headers as 'record-id'" 
+      });
+    }
+
+    const result = await getInvoiceFilesFromDb(recordId);
     const filesToProcess = result.filesToProcess || [];
     const skippedFiles = result.skippedFiles || [];
 
@@ -58,7 +67,7 @@ if (filesToProcess.length === 0 && skippedFiles.length > 0) {
       //console.log(`\n--- Processing ${index + 1}/${filesToProcess.length} ---`);
       
 try {
-  const processResult = await processInvoice(fileData.filePath, fileData.ftpFilename);
+  const processResult = await processInvoice(fileData.filePath, fileData.ftpFilename, recordId);
   
   // ✅ FIX: Check if processResult exists
   if (processResult && processResult.success === true) {

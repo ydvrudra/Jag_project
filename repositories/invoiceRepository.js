@@ -37,7 +37,9 @@ function cleanPercentValue(value) {
   return numMatch ? numMatch[0] : "0";
 }
 
-async function writeToMainTables(dataArray, allRows, groupMap) {
+async function writeToMainTables(dataArray, allRows, groupMap,recordId) {
+  console.log("🔍 DEBUG - RecordId received:", recordId);
+  console.log("🔍 DEBUG - Is recordId valid?", recordId > 0);
   const pool = await poolConnect;
   const tx = new sql.Transaction(pool);
   
@@ -72,6 +74,7 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
       const insertInvoice = new sql.Request(tx);
       
       // Set all input parameters
+      insertInvoice.input("upload_header_id", sql.Int, recordId || null);
       insertInvoice.input("filename", sql.VarChar(255), file || null);
       insertInvoice.input("document_confidence", sql.Decimal(6, 3), doc.confidence ?? null);
       insertInvoice.input("supplier_name", sql.VarChar(255), cleanText(f["SUPPLIER NAME"]?.content));
@@ -113,7 +116,8 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
           created_datetime, kz_PageMasterId, kz_UserId, kz_CompanyId,
           kz_LocationId, kz_CreatedUserId, kz_ModifiedUserId,
           kz_ModifiedCompanyId, kz_ModifiedLocationId, kz_IPAddress,
-          kz_SessionId, kz_PcName, kz_CreatedDateTime, kz_ModifiedDateTime
+          kz_SessionId, kz_PcName, kz_CreatedDateTime, kz_ModifiedDateTime,
+          UploadHeaderId  
         )
         VALUES (
           @filename, @document_confidence, @supplier_name, @invoice_number, @invoice_date,
@@ -122,7 +126,8 @@ async function writeToMainTables(dataArray, allRows, groupMap) {
           GETDATE(), @kz_PageMasterId, @kz_UserId, @kz_CompanyId,
           @kz_LocationId, @kz_CreatedUserId, @kz_ModifiedUserId,
           @kz_ModifiedCompanyId, @kz_ModifiedLocationId, @kz_IPAddress,
-          @kz_SessionId, @kz_PcName, @kz_CreatedDateTime, @kz_ModifiedDateTime
+          @kz_SessionId, @kz_PcName, @kz_CreatedDateTime, @kz_ModifiedDateTime,
+           @upload_header_id
         );
         
         SELECT SCOPE_IDENTITY() AS invoice_main_id;
