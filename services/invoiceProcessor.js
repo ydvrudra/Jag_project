@@ -68,7 +68,7 @@ exports.processInvoice = async (filePath, fileName) => {
     };
     
   } catch (error) {
-    console.error(`💥 Error processing invoice ${fileName}:`, error.message);
+    console.error(` Error processing invoice ${fileName}:`, error.message);
     
     // Cleanup local file on error
     try {
@@ -76,7 +76,7 @@ exports.processInvoice = async (filePath, fileName) => {
         fs.unlinkSync(filePath);
       }
     } catch (cleanupErr) {
-      console.warn(`⚠️  Could not cleanup temp file`);
+      console.warn(`  Could not cleanup temp file`);
     }
     
     return { 
