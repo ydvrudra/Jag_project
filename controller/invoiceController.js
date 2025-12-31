@@ -16,9 +16,36 @@ exports.processAllInvoices = async (req, res) => {
     const skippedFiles = result.skippedFiles || [];
 
    if (filesToProcess.length === 0 && skippedFiles.length === 0) {
-     // console.log('📭 No files found to process');
-      return res.json({ status: "no_files", message: "No invoice files found." });
-    }
+  return res.json({ status: "no_files", message: "No invoice files found." });
+}
+
+// Agar sirf skipped files hain, to email bhejo aur return karo
+if (filesToProcess.length === 0 && skippedFiles.length > 0) {
+  console.log("📭 Only already processed files found - sending email");
+  
+  const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
+  if (userEmail) {
+    sendInvoiceProcessingSummaryEmail({
+      successCount: 0,
+      failCount: 0,
+      successFiles: [],
+      failFiles: [],
+      skippedFiles: skippedFiles,
+      attachmentPath: extractedExcelFile,
+      toEmail: userEmail,
+    }).then(() => {
+      console.log("✅ Email sent for skipped files");
+    }).catch(err => {
+      console.log("⚠️ Email failed:", err.message);
+    });
+  }
+  
+  return res.json({ 
+    status: "skipped_only", 
+    message: `${skippedFiles.length} invoice(s) were already processed.`,
+    skippedCount: skippedFiles.length 
+  });
+}
       
     // 2. Process each file
     const results = [];
@@ -64,7 +91,7 @@ try {
 //console.log("\n3️⃣  Sending summary email...");
 const userEmail = req.headers["email"] || process.env.DEFAULT_EMAIL;
 
-if (userEmail && (results.length > 0 || errors.length > 0 || skippedFiles.length > 0)) {
+if (userEmail && (results.length > 0 || errors.length > 0)) {
   console.log("📧 Queueing email for background sending...");
   
   // DON'T AWAIT - send in background

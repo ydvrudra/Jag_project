@@ -72,9 +72,12 @@ async function getInvoiceFilesFromDb() {
     
     
     if (filesToProcess.length === 0) {
-     // console.log('📭 All files already processed - NO AZURE CHARGE!');
-      return [];
-    }
+   console.log('📭 All files already processed - NO AZURE CHARGE!');
+    return {
+    filesToProcess: [], 
+    skippedFiles: skippedFiles  
+  };
+}
     
    // console.log('📄 Files to process (original names):', filesToProcess);
     
